@@ -67,7 +67,7 @@ Erzeugt `master.key.php` und `index.key.php`.
 
 ```bash
 php bin/setup.php check
-php bin/setup.php admin thomas
+php bin/setup.php admin name
 ```
 
 Danach anmelden und unter **Sicherheit** 2FA einrichten. Die
