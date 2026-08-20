@@ -1,8 +1,8 @@
 # Health-dashboard
 
-# Installation
+## Installation
 
-## 1. Verzeichnisstruktur
+### 1. Verzeichnisstruktur
 
 Entscheidend ist, dass **nur `public/` im Webroot liegt**. Bei World4You ist der
 Webroot je nach Paket `/html` oder `/httpdocs`.
@@ -32,7 +32,7 @@ außerhalb des Document Roots möglich ist; bei World4You geht das in der Regel.
 
 Die Pfade in `config.php` unter `paths` entsprechend anpassen.
 
-## 2. Datenbank
+### 2. Datenbank
 
 Im World4You-Kundencenter eine MySQL-Datenbank anlegen, dann:
 
@@ -42,7 +42,7 @@ SOURCE db/01_core_schema.sql;
 
 oder den Inhalt über phpMyAdmin einspielen.
 
-## 3. Konfiguration
+### 3. Konfiguration
 
 ```bash
 cp app/config/config.example.php app/config/config.php
@@ -50,7 +50,7 @@ cp app/config/config.example.php app/config/config.php
 
 DB-Zugangsdaten, `base_url` und Pfade eintragen.
 
-## 4. Schlüssel erzeugen
+### 4. Schlüssel erzeugen
 
 ```bash
 php bin/setup.php keys
@@ -63,7 +63,7 @@ Erzeugt `master.key.php` und `index.key.php`.
 > wertlos – wer den Ordner hat, hat alles. Umgekehrt: ohne `master.key` sind
 > die Daten endgültig verloren, auch von dir.
 
-## 5. Prüfen und Admin anlegen
+### 5. Prüfen und Admin anlegen
 
 ```bash
 php bin/setup.php check
@@ -73,7 +73,7 @@ php bin/setup.php admin thomas
 Danach anmelden und unter **Sicherheit** 2FA einrichten. Die
 Wiederherstellungscodes werden nur einmal angezeigt.
 
-## 6. Cronjob
+### 6. Cronjob
 
 ```
 15 3 * * *  php /kunde/bin/setup.php purge
@@ -82,29 +82,29 @@ Wiederherstellungscodes werden nur einmal angezeigt.
 Räumt Login-Versuche, abgelaufene Sessions, verbrauchte TOTP-Zeitschritte und
 Tokens auf.
 
-## Ohne Kommandozeile
+### Ohne Kommandozeile
 
 Falls kein SSH verfügbar ist: `bin/setup.php` temporär in den Webroot kopieren,
 die CLI-Prüfung am Dateianfang auskommentieren, die drei Befehle über den
 Browser aufrufen (`?cmd=keys` müsste man dann noch ergänzen) und die Datei
 **sofort wieder löschen**. Sauberer ist, den SSH-Zugang freischalten zu lassen.
 
-## HTTPS
+### HTTPS
 
 World4You liefert Let's-Encrypt-Zertifikate im Kundencenter. Nach der
 Aktivierung greifen `force_https` in der Konfiguration und der Redirect in der
 `.htaccess`. HSTS wird mit einem Jahr Laufzeit gesetzt – erst einschalten, wenn
 das Zertifikat sicher steht, sonst sperrst du dich für die Dauer aus.
 
-## Anforderungen
+### Anforderungen
 
 - PHP 8.1+ mit `openssl`, `pdo_mysql`, `mbstring`
 - Argon2id (sonst automatischer Fallback auf bcrypt cost 12)
 - MySQL 8.0 / MariaDB 10.5+
 
-# Oberfläche: Mobil und Darstellungsmodi
+## Oberfläche: Mobil und Darstellungsmodi
 
-## Gemeinsames Seitengerüst
+### Gemeinsames Seitengerüst
 
 `Health\View` liefert Kopfzeile, Navigation und Umschalter. Vorher stand
 dieselbe Kopfzeile in sechs Dateien – mit zwölf Modulen wären daraus zwanzig
@@ -121,12 +121,12 @@ Login-Seiten nutzen `View::startBare()` – schmales Layout ohne Navigation.
 Neue Menüpunkte kommen in das Array `View::$nav`; `'admin' => true` blendet
 einen Eintrag für Nicht-Administratoren aus.
 
-## Darstellungsmodi
+### Darstellungsmodi
 
 Drei Zustände: **automatisch** (folgt dem Betriebssystem), **hell**, **dunkel**.
 Der Umschalter in der Kopfzeile geht der Reihe nach durch.
 
-### Warum Cookie statt localStorage
+#### Warum Cookie statt localStorage
 
 Das Theme steht in einem Cookie, weil PHP es beim Rendern liest und direkt in
 `<html data-theme="…">` schreibt. Mit `localStorage` könnte erst JavaScript
@@ -138,7 +138,7 @@ Cookie-Pfad ist der `base_path` der Installation; `ui.js` leitet ihn aus der
 eigenen Skript-URL ab, weil eine Inline-Variable von der
 Content-Security-Policy blockiert würde.
 
-### Farbwahl
+#### Farbwahl
 
 Der Dunkelmodus ist nicht invertiert. Reines Schwarz erzeugt auf OLED bei
 Textmengen Nachzieheffekte, volle Weißwerte blenden. Deshalb abgesetzte
@@ -150,7 +150,7 @@ bleibt.
 Datumsauswahl des Browsers mitziehen. `theme-color` färbt die Browserleiste
 auf iOS und Android.
 
-## Mobil
+### Mobil
 
 - **Navigation** klappt unter 760 px über ein Symbol auf. Umgesetzt mit einer
   versteckten Checkbox, nicht mit `<details>`: bei `<details>` blendet der
@@ -167,7 +167,7 @@ auf iOS und Android.
 - **Filterleisten** scrollen horizontal statt umzubrechen.
 - `viewport-fit=cover` plus `env(safe-area-inset-*)` für Geräte mit Notch.
 
-## Content-Security-Policy
+### Content-Security-Policy
 
 `script-src 'self'` – kein Inline-JavaScript. Das betrifft auch
 Event-Attribute: `onsubmit="return confirm(…)"` ist Inline-JavaScript und wird
@@ -179,9 +179,9 @@ Beim Bauen neuer Seiten also: keine `on*`-Attribute, kein `<script>` ohne
 `src`.
 
 
-# Architektur der Basis
+## Architektur der Basis
 
-## Verschlüsselungsmodell
+### Verschlüsselungsmodell
 
 ```
 app/keys/master.key.php  (32 Byte base64, chmod 400)
@@ -211,13 +211,13 @@ werden, sonst ist der Schutz aufgehoben.
 **Konsequenz für Passwortwechsel:** Der DEK hängt nicht am Passwort. Ein
 Passwortwechsel erfordert deshalb keine Neuverschlüsselung der Daten.
 
-### AAD (Additional Authenticated Data)
+#### AAD (Additional Authenticated Data)
 
 Jedes Feld wird mit einem Kontextstring verschlüsselt, z. B. `"findings.title"`.
 GCM prüft diesen mit. Damit lässt sich ein Ciphertext nicht von einem Feld in
 ein anderes kopieren – etwa eine fremde Notiz in das eigene Diagnosefeld.
 
-### Was verschlüsselt wird – und was nicht
+#### Was verschlüsselt wird – und was nicht
 
 | verschlüsselt | Klartext |
 |---|---|
@@ -232,13 +232,13 @@ in PHP über alle Datensätze hinweg berechenbar. Der Informationsgewinn eines
 Angreifers aus „Blutdruck 128/82 am 14.03." ohne zugehörige Person und Kontext
 ist gering – der Preis wäre hoch.
 
-### Blind Index
+#### Blind Index
 
 Für Gleichheitssuche auf verschlüsselten Spalten (E-Mail, Tag-Namen):
 `HMAC-SHA256(kontext || wert, index.key)`, auf 16 Byte gekürzt. Erlaubt
 `WHERE email_bidx = ?`, aber keine Teilstringsuche und keine Sortierung.
 
-## Authentifizierung
+### Authentifizierung
 
 1. **Passwort** – Argon2id (64 MB, t=4), Fallback bcrypt cost 12.
    Timing-Angleichung bei unbekanntem Benutzer über einen Dummy-Hash.
@@ -249,7 +249,7 @@ Für Gleichheitssuche auf verschlüsselten Spalten (E-Mail, Tag-Namen):
    `totp_used_codes`; derselbe Code gilt nicht zweimal.
 4. **Wiederherstellungscodes** – 10 Stück, bcrypt-gehasht, Einmalverwendung.
 
-### Sitzungen
+#### Sitzungen
 
 PHP-Sessions (Speicherort außerhalb des Webroots, sonst liest sie auf Shared
 Hosting im Zweifel der Nachbar) plus eine Spiegeltabelle `user_sessions`. Die
@@ -263,13 +263,13 @@ Zwei Zeitgrenzen: Inaktivität (1 h) und absolute Laufzeit (12 h).
 aus der Datenbank entpackt. Das kostet eine Entschlüsselung, verhindert aber,
 dass Klartextschlüssel in Session-Dateien auf der Platte liegen.
 
-### Rate Limiting
+#### Rate Limiting
 
 `login_attempts` zählt Fehlversuche je Benutzername **und** je IP getrennt –
 sonst sperrt ein Angreifer durch gezielte Fehlversuche fremde Konten aus
 (Account Lockout DoS). Standard: 5 Versuche pro 15 Minuten.
 
-## Querschnittstabellen
+### Querschnittstabellen
 
 **`timeline_events`** ist die Achse des Systems. Jedes Modul schreibt beim
 Anlegen und Ändern eines Datensatzes einen Eintrag mit `module`, `ref_id`,
@@ -288,7 +288,7 @@ Account bekommt. Sobald ein Kind mitverwaltet werden soll oder jemand
 Leserechte braucht, ist das eine Zeile statt einer Migration. Funktioniert
 technisch, weil der Server den fremden DEK über den Master-Key entpacken kann.
 
-### Ablageform der Schlüssel
+#### Ablageform der Schlüssel
 
 Die Schlüssel liegen als PHP-Dateien:
 
@@ -308,20 +308,20 @@ Das ersetzt die `.htaccess` nicht, sondern ergänzt sie um eine Schicht, die
 nicht an einer einzelnen Konfigurationszeile hängt. Das alte Format wird
 weiterhin gelesen, damit bestehende Installationen nicht brechen.
 
-## Was noch fehlt
+### Was noch fehlt
 
 - Passwort-Reset per E-Mail (`user_tokens` ist vorbereitet, Versand fehlt)
 - Verschlüsselte Dateiablage (`attachments` steht, Upload-Handler fehlt)
 - Schlüsselrotation (`dek_version` ist vorgesehen, Routine fehlt)
 - CSP-Nonce wird gesetzt, aber noch nirgends gebraucht (kein Inline-JS)
 
-# Stufe 2 – Querschnittsdienste
+## Querschnittsdienste
 
 Die Grundlage, auf der alle Module aufsetzen. Wer sie überspringt, schreibt
 Verschlüsselung, Ownership-Prüfung und Aufräumlogik zwölfmal – und irgendwann
 einmal falsch.
 
-## Repository
+### Repository
 
 Basisklasse für alle Modul-Repositories. Ein konkretes Modul deklariert nur
 noch drei Dinge:
@@ -342,7 +342,7 @@ Damit funktionieren `find()`, `between()`, `create()`, `update()`, `delete()`,
 `count()` – jeweils auf den Datenbesitzer eingegrenzt und mit korrekt
 gesetztem AAD.
 
-### AAD-Konvention
+#### AAD-Konvention
 
 Jedes Feld wird mit `tabelle.feld` als Additional Authenticated Data
 verschlüsselt. GCM prüft das beim Entschlüsseln mit. Ein Ciphertext lässt sich
@@ -353,7 +353,7 @@ in ein Diagnosefeld.
 die bestehenden Werte sind nicht mehr entschlüsselbar. Tabellennamen sind damit
 Teil des Datenformats, nicht bloß Kosmetik.
 
-### Löschen
+#### Löschen
 
 `delete()` räumt Anhänge, Tags und Timeline-Einträge mit ab. Das muss die
 Anwendung erledigen, weil die polymorphen Verweise `(module, ref_id)` keine
@@ -361,7 +361,7 @@ Fremdschlüssel haben. Wer in einem Modul an `Repository::delete()` vorbei
 löscht, hinterlässt Karteileichen – `AttachmentService::findOrphans()` findet
 sie im Nachhinein.
 
-## TimelineService
+### TimelineService
 
 Jedes Modul meldet seine Datensätze über `record()` an. Der Eintrag hält Titel
 und Kurzfassung redundant – bewusst: die Timeline soll ohne Zugriff auf zwölf
@@ -373,7 +373,7 @@ Aufruf.
 Bereitgestellt: `range()` mit Modul- und Zeitraumfilter, `around()` für den
 Kontext eines Datums, `groupedByDay()`, `countsByModule()`, `bounds()`.
 
-## TagService
+### TagService
 
 Tag-Namen sind verschlüsselt – "Laktoseintoleranz" ist für sich schon
 Gesundheitsinformation. Gesucht wird über den Blind Index (HMAC über den
@@ -388,14 +388,14 @@ Kleinschreibung) muss deterministisch bleiben. Ändert sie sich später, finden
 alte und neue Tags einander nicht mehr und brauchen eine Neuberechnung aller
 Blind Indexes.
 
-## AttachmentService und FileCrypto
+### AttachmentService und FileCrypto
 
 Dateien liegen verschlüsselt unter Zufallsnamen in `app/storage/files/`,
 verteilt auf Unterverzeichnisse nach den ersten beiden Zeichen. Der echte
 Dateiname steht verschlüsselt in der Datenbank – `Befund_Onkologie_2026.pdf`
 verrät im Klartext-Dateisystem bereits mehr als nötig.
 
-### Warum blockweise
+#### Warum blockweise
 
 Ein 25-MB-PDF durch `openssl_encrypt()` läge dreimal gleichzeitig im Speicher
 und reißt auf Shared Hosting das `memory_limit`. Daher Blöcke zu 1 MiB, je mit
@@ -410,7 +410,7 @@ Als AAD dient `storageKey:blockIndex`. Das schließt zwei Angriffe aus, die bei
 blockweiser Verschlüsselung sonst offenstehen: Blöcke innerhalb einer Datei
 vertauschen und ganze Dateien gegen andere, ebenfalls gültige austauschen.
 
-### Was das Format nicht erkennt
+#### Was das Format nicht erkennt
 
 Abschneiden am Ende. Ein verkürzter Ciphertext entschlüsselt sauber – es fehlt
 nur Inhalt. Dagegen steht der `sha256` des Klartexts in der Datenbank;
@@ -418,20 +418,20 @@ nur Inhalt. Dagegen steht der `sha256` des Klartexts in der Datenbank;
 Hash und gibt erst dann das erste Byte aus. `php://temp` läuft ab 2 MB auf die
 Platte über, das `memory_limit` bleibt unangetastet.
 
-### Upload-Prüfung
+#### Upload-Prüfung
 
 MIME wird aus dem Dateiinhalt bestimmt (`finfo`), nicht aus dem Browser-Header
 – der ist frei wählbar. Zusätzlich muss die Dateiendung zum erkannten Inhalt
 passen. Erlaubt sind PDF, JPEG, PNG, HEIC, TIFF, TXT, CSV und DICOM.
 
-## DEK-Cache
+### DEK-Cache
 
 `App::dekFor()` hält entpackte Schlüssel für die Dauer des Requests. Ohne das
 löste jedes verschlüsselte Feld eine Datenbankabfrage plus Entschlüsselung aus
 – bei 200 Timeline-Einträgen 400 überflüssige Operationen. In der Session
 landet weiterhin nichts.
 
-## Selbsttest
+### Selbsttest
 
 `public/stufe2-selftest.php` (Administrator erforderlich) prüft alle Dienste
 gegen die laufende Installation und räumt seine Testdaten wieder ab. Nach
