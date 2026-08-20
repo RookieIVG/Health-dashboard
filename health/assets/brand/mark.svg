@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" role="img" aria-label="Health-Dashboard">
+  <style>
+    .s { stroke: #0f6e63; }
+    @media (prefers-color-scheme: dark) { .s { stroke: #4bbfae; } }
+  </style>
+  <!-- Stethoskopschlauch als Herzform. Der Ring sitzt mittig auf der
+       Linie: sein Mittelpunkt liegt auf der Tangente des Kurvenendes,
+       im Abstand des Radius. Dadurch wirkt das Bruststück aufgefädelt
+       statt danebengelegt. -->
+  <g transform="translate(4.5 -3)">
+    <path class="s" d="M44 86
+             C 26 71, 12 58, 12 42
+             C 12 26, 30 18, 42 28
+             C 46 32, 49 36, 50 42
+             C 51 36, 54 32, 58 28
+             C 70 18, 88 26, 88 42
+             C 88 54, 80 60, 76 74"
+          fill="none" stroke-width="8.5" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle class="s" cx="74.2" cy="82.8" r="9" fill="none" stroke-width="8.5"/>
+  </g>
+</svg>

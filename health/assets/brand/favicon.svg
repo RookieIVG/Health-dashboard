@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <style>
+    .tile { fill: #0f6e63; }
+    .fg   { stroke: #fff; }
+    .dot  { fill: #fff; }
+    @media (prefers-color-scheme: dark) {
+      .tile { fill: #4bbfae; }
+      .fg   { stroke: #0d1417; }
+      .dot  { fill: #0d1417; }
+    }
+  </style>
+  <rect class="tile" width="100" height="100" rx="22"/>
+  <!-- Kräftiger als das Logo und mit gefülltem Bruststück:
+       bei 16 px fällt das Loch im Ring sonst zu. -->
+  <g transform="translate(50 50) scale(0.78) translate(-50 -50) translate(4.5 -3)">
+    <path class="fg" d="M44 86
+             C 26 71, 12 58, 12 42
+             C 12 26, 30 18, 42 28
+             C 46 32, 49 36, 50 42
+             C 51 36, 54 32, 58 28
+             C 70 18, 88 26, 88 42
+             C 88 54, 80 60, 76 74"
+          fill="none" stroke-width="10" stroke-linecap="round" stroke-linejoin="round"/>
+    <circle class="dot" cx="74.2" cy="82.8" r="9.5"/>
+  </g>
+</svg>
