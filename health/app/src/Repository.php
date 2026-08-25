@@ -133,7 +133,20 @@ abstract class Repository
         foreach ($this->encryptedFields() as $field => $_) {
             $col = $field . '_enc';
             if (array_key_exists($col, $row)) {
-                $row[$field] = $this->decField($field, $row[$col]);
+                try {
+                    $row[$field] = $this->decField($field, $row[$col]);
+                } catch (\Throwable $e) {
+                    // Ein einzelner beschädigter oder mit falschem Schlüssel
+                    // verschlüsselter Datensatz darf nicht die gesamte Liste
+                    // unbrauchbar machen - lieber diese eine Zeile deutlich
+                    // als unlesbar kennzeichnen und protokollieren, damit man
+                    // es bemerkt, statt dass die ganze Seite abstürzt.
+                    $row[$field] = null;
+                    $row['_decrypt_failed'][] = $field;
+                    error_log('[health] Entschlüsselung fehlgeschlagen: '
+                        . $this->table() . '.' . $field . ' (id=' . ($row['id'] ?? '?') . '): '
+                        . $e->getMessage());
+                }
                 unset($row[$col]);
             }
         }

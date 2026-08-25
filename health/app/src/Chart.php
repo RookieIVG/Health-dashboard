@@ -121,6 +121,27 @@ final class Chart
     }
 
     /** Kleine Verlaufslinie ohne Achsen, für Übersichtskacheln. */
+    public static function spark(array $values, int $w = 120, int $h = 28): string
+    {
+        $values = array_values(array_map('floatval', $values));
+        if (count($values) < 2) return '';
+
+        $min = min($values); $max = max($values);
+        if ($max - $min < 0.0001) { $min -= 1; $max += 1; }
+
+        $n = count($values);
+        $d = '';
+        foreach ($values as $i => $v) {
+            $x = ($w - 2) * $i / ($n - 1) + 1;
+            $y = 2 + ($h - 4) * (1 - (($v - $min) / ($max - $min)));
+            $d .= ($i === 0 ? 'M' : 'L') . sprintf('%.1f %.1f ', $x, $y);
+        }
+
+        return '<svg viewBox="0 0 ' . $w . ' ' . $h . '" class="spark" '
+             . 'xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
+             . '<path d="' . trim($d) . '" fill="none" class="chart-line"/></svg>';
+    }
+
     /**
      * Kompakte gestapelte Balken-Zeitleiste über N Tage – für die
      * Timeline-Kachel auf der Übersichtsseite. Je Tag ein Balken,
