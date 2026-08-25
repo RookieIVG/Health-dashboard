@@ -41,6 +41,16 @@ final class App
             return self::$instance;
         }
 
+        // Bewusst als Allererstes: fängt jede Ausgabe ab, die vor einem
+        // möglichen Fehler schon begonnen hat (Kopfzeile, Navigation,
+        // Teile einer Kachel). Ohne das würde ein Fehler mitten im
+        // Seitenaufbau zu einer halb gerenderten Seite plus angehängtem
+        // Fehlertext führen, UND http_response_code(500) im Fehlerfall
+        // scheitern ("headers already sent") - genau das ist einmal
+        // live passiert. Im Normalfall (kein Fehler) unsichtbar: PHP
+        // gibt gepufferte Ausgabe am Skriptende automatisch aus.
+        ob_start();
+
         spl_autoload_register(static function (string $class): void {
             if (!str_starts_with($class, 'Health\\')) return;
             $file = __DIR__ . '/' . str_replace('\\', '/', substr($class, 7)) . '.php';
@@ -174,6 +184,11 @@ final class App
         if (!$dev) {
             set_exception_handler(static function (\Throwable $e): void {
                 error_log('[health] ' . $e->getMessage() . ' @ ' . $e->getFile() . ':' . $e->getLine());
+                // Alles bisher Gepufferte verwerfen (Kopfzeile, angefangene
+                // Kachel, …) - sonst hängt die saubere Meldung unten an
+                // einer halb gerenderten Seite, und http_response_code()
+                // scheitert zusätzlich mit "headers already sent".
+                while (ob_get_level() > 0) { ob_end_clean(); }
                 http_response_code(500);
                 echo 'Es ist ein Fehler aufgetreten. Der Vorfall wurde protokolliert.';
             });
