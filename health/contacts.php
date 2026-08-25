@@ -5,6 +5,7 @@ require __DIR__ . '/_init.php';
 use Health\App;
 use Health\ContactsRepository as Contacts;
 use Health\Csrf;
+use Health\Modules;
 use Health\View;
 
 $app = App::boot();
@@ -35,12 +36,12 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 if (($_GET['edit'] ?? '') !== '') $edit = $repo->find((int)$_GET['edit']);
 $list = $repo->listAll();
 
-View::start($app, ['title' => 'Kontakte – ' . $app->config['app']['name'], 'active' => 'appointments']);
+View::start($app, ['title' => 'Kontakte – ' . $app->config['app']['name'], 'active' => 'contacts']);
 ?>
 <?php View::flash($ok, 'ok'); View::flash($error, 'error'); ?>
 
 <div class="panel">
-  <h1>Ärzte und Kontakte</h1>
+  <h1><?= View::moduleDot(Modules::CONTACT) ?>Ärzte und Kontakte</h1>
   <p class="sub"><?= count($list) ?> Einträge · <a href="<?= App::url('/appointments.php') ?>">Termine</a></p>
 
   <?php if (!$list): ?>
@@ -101,12 +102,25 @@ View::start($app, ['title' => 'Kontakte – ' . $app->config['app']['name'], 'ac
         <input type="text" id="specialty" name="specialty" maxlength="120"
                value="<?= App::e($edit['specialty'] ?? '') ?>">
       </div>
-      <div>
-        <label for="institution">Einrichtung</label>
-        <input type="text" id="institution" name="institution" maxlength="200"
-               value="<?= App::e($edit['institution'] ?? '') ?>">
-      </div>
     </div>
+
+    <label for="parent_contact_id">Gehört zu (z.&nbsp;B. Klinik, in der die Person arbeitet)</label>
+    <select id="parent_contact_id" name="parent_contact_id">
+      <option value="">– keine Auswahl –</option>
+      <?php foreach ($list as $c): if ($edit && (int)$c['id'] === (int)$edit['id']) continue; ?>
+        <option value="<?= (int)$c['id'] ?>"
+          <?= isset($edit['parent_contact_id']) && (int)$edit['parent_contact_id'] === (int)$c['id'] ? 'selected' : '' ?>>
+          <?= App::e($c['name']) ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+    <label for="parent_contact_new">oder neu anlegen</label>
+    <input type="text" id="parent_contact_new" name="parent_contact_new" maxlength="200"
+           placeholder="nur ausfüllen, wenn nicht in der Liste oben">
+    <p class="hint">
+      Umbenennungen wirken sich überall aus, wo dieser Kontakt als
+      "Gehört zu" hinterlegt ist.
+    </p>
 
     <div class="field-row">
       <div>

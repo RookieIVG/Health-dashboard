@@ -5,6 +5,7 @@ require __DIR__ . '/_init.php';
 use Health\App;
 use Health\Chart;
 use Health\Csrf;
+use Health\Modules;
 use Health\View;
 use Health\VitalsRepository;
 
@@ -86,7 +87,7 @@ View::start($app, ['title' => 'Vitalwerte – ' . $app->config['app']['name'], '
 <?php View::flash($ok, 'ok'); View::flash($error, 'error'); ?>
 
 <div class="panel">
-  <h1>Vitalwerte</h1>
+  <h1><?= View::moduleDot(Modules::VITALS) ?>Vitalwerte</h1>
   <p class="sub">
     <?= $overview
         ? 'Letzter Stand je Messgröße. Zum Verlauf tippen.'
@@ -186,69 +187,4 @@ View::start($app, ['title' => 'Vitalwerte – ' . $app->config['app']['name'], '
   <?php endif; ?>
 </div>
 
-<div class="panel">
-  <h2>Eigene Messgröße anlegen</h2>
-  <p class="sub">
-    Für alles, was nicht mitgeliefert ist – etwa INR, Gewicht eines Kindes
-    oder ein Wert aus einer Spezialambulanz.
-  </p>
-  <form method="post">
-    <?= Csrf::field() ?>
-    <input type="hidden" name="action" value="new_metric">
-
-    <div class="field-row">
-      <div>
-        <label for="label">Bezeichnung</label>
-        <input type="text" id="label" name="label" required maxlength="96">
-      </div>
-      <div>
-        <label for="unit">Einheit</label>
-        <input type="text" id="unit" name="unit" maxlength="24">
-      </div>
-    </div>
-
-    <div class="field-row">
-      <div>
-        <label for="mkey">Kurzname</label>
-        <input type="text" id="mkey" name="mkey" required maxlength="48"
-               pattern="[a-z0-9_]+" placeholder="z. B. inr">
-      </div>
-      <div>
-        <label for="decimals">Nachkommastellen</label>
-        <select id="decimals" name="decimals">
-          <option value="0">0</option><option value="1">1</option>
-          <option value="2">2</option><option value="3">3</option>
-        </select>
-      </div>
-    </div>
-
-    <div class="field-row">
-      <div>
-        <label for="ref_low">Orientierung von</label>
-        <input type="text" id="ref_low" name="ref_low" inputmode="decimal">
-      </div>
-      <div>
-        <label for="ref_high">bis</label>
-        <input type="text" id="ref_high" name="ref_high" inputmode="decimal">
-      </div>
-    </div>
-
-    <div class="field-row">
-      <div>
-        <label for="plaus_min">Möglich von</label>
-        <input type="text" id="plaus_min" name="plaus_min" inputmode="decimal">
-      </div>
-      <div>
-        <label for="plaus_max">bis</label>
-        <input type="text" id="plaus_max" name="plaus_max" inputmode="decimal">
-      </div>
-    </div>
-    <p class="hint">
-      Die Plausibilitätsgrenzen fangen Tippfehler ab, der Orientierungsbereich
-      dient nur der farblichen Kennzeichnung im Verlauf.
-    </p>
-
-    <button type="submit" class="auto secondary">Metrik anlegen</button>
-  </form>
-</div>
 <?php View::end($app); ?>

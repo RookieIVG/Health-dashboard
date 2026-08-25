@@ -78,24 +78,35 @@ View::start($app, ['title' => $a['title'] . ' – Termin', 'active' => 'appointm
     <div style="white-space:pre-wrap"><?= App::e($a['result']) ?></div>
   <?php endif; ?>
 
-  <?php if ($a['status'] === 'planned'): ?>
   <div class="actions">
-    <form method="post">
+    <?php if ($a['status'] === 'planned'): ?>
+      <form method="post">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="status">
+        <input type="hidden" name="id" value="<?= $id ?>">
+        <input type="hidden" name="status" value="done">
+        <button type="submit" class="secondary small">Als erledigt markieren</button>
+      </form>
+      <form method="post">
+        <?= Csrf::field() ?>
+        <input type="hidden" name="action" value="status">
+        <input type="hidden" name="id" value="<?= $id ?>">
+        <input type="hidden" name="status" value="cancelled">
+        <button type="submit" class="secondary small">Absagen</button>
+      </form>
+    <?php endif; ?>
+    <?php /* Löschen ist etwas anderes als Absagen: Absagen behält den
+             Termin (Verlauf, Timeline, Kalenderabo-Historie), Löschen
+             entfernt ihn vollständig samt Dateien. Beide gehören
+             gleichwertig sichtbar hierher, nicht nur ganz unten im
+             Bearbeiten-Formular versteckt. */ ?>
+    <form method="post" data-confirm="Termin samt Dateien und Timeline-Eintrag endgültig löschen?">
       <?= Csrf::field() ?>
-      <input type="hidden" name="action" value="status">
+      <input type="hidden" name="action" value="delete">
       <input type="hidden" name="id" value="<?= $id ?>">
-      <input type="hidden" name="status" value="done">
-      <button type="submit" class="secondary small">Als erledigt markieren</button>
-    </form>
-    <form method="post">
-      <?= Csrf::field() ?>
-      <input type="hidden" name="action" value="status">
-      <input type="hidden" name="id" value="<?= $id ?>">
-      <input type="hidden" name="status" value="cancelled">
-      <button type="submit" class="secondary small">Abgesagt</button>
+      <button type="submit" class="secondary small">Löschen</button>
     </form>
   </div>
-  <?php endif; ?>
 </div>
 
 <div class="panel">
@@ -210,13 +221,5 @@ View::start($app, ['title' => $a['title'] . ' – Termin', 'active' => 'appointm
     <button type="submit" class="auto">Speichern</button>
   </form>
 
-  <div class="actions">
-    <form method="post" data-confirm="Termin samt Dateien und Timeline-Eintrag löschen?">
-      <?= Csrf::field() ?>
-      <input type="hidden" name="action" value="delete">
-      <input type="hidden" name="id" value="<?= $id ?>">
-      <button type="submit" class="secondary small">Löschen</button>
-    </form>
-  </div>
 </div>
 <?php View::end($app); ?>

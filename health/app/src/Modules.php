@@ -25,20 +25,26 @@ final class Modules
     public const ACTIVITY     = 'activity';
     public const COST         = 'cost';
 
-    /** Anzeigename und Icon je Modul. */
+    /**
+     * Anzeigename, Icon und Farbe je Modul. Die Farbe zeigt sich vor
+     * allem in der gestapelten Tagesübersicht der Timeline-Kachel -
+     * eigene CSS-Variable je Modul (siehe app.css), damit sich helles
+     * und dunkles Thema unabhängig voneinander abstimmen lassen, ohne
+     * hier feste Hex-Werte zu duplizieren.
+     */
     public const META = [
-        self::MEDICATION  => ['label' => 'Medikation',   'icon' => 'pill'],
-        self::FINDING     => ['label' => 'Befund',       'icon' => 'file'],
-        self::LAB         => ['label' => 'Labor',        'icon' => 'flask'],
-        self::VITALS      => ['label' => 'Vitalwert',    'icon' => 'heart'],
-        self::DIARY       => ['label' => 'Tagebuch',     'icon' => 'book'],
-        self::DIAGNOSIS   => ['label' => 'Diagnose',     'icon' => 'stethoscope'],
-        self::ALLERGY     => ['label' => 'Allergie',     'icon' => 'alert'],
-        self::VACCINATION => ['label' => 'Impfung',      'icon' => 'syringe'],
-        self::APPOINTMENT => ['label' => 'Termin',       'icon' => 'calendar'],
-        self::CONTACT     => ['label' => 'Kontakt',      'icon' => 'user'],
-        self::ACTIVITY    => ['label' => 'Aktivität',    'icon' => 'run'],
-        self::COST        => ['label' => 'Kosten',       'icon' => 'euro'],
+        self::MEDICATION  => ['label' => 'Medikation',   'icon' => 'pill',        'color' => 'var(--mod-medication)'],
+        self::FINDING     => ['label' => 'Befund',       'icon' => 'file',        'color' => 'var(--mod-finding)'],
+        self::LAB         => ['label' => 'Labor',        'icon' => 'flask',       'color' => 'var(--mod-lab)'],
+        self::VITALS      => ['label' => 'Vitalwert',    'icon' => 'heart',       'color' => 'var(--mod-vitals)'],
+        self::DIARY       => ['label' => 'Tagebuch',     'icon' => 'book',        'color' => 'var(--mod-diary)'],
+        self::DIAGNOSIS   => ['label' => 'Diagnose',     'icon' => 'stethoscope', 'color' => 'var(--mod-diagnosis)'],
+        self::ALLERGY     => ['label' => 'Allergie',     'icon' => 'alert',       'color' => 'var(--mod-allergy)'],
+        self::VACCINATION => ['label' => 'Impfung',      'icon' => 'syringe',     'color' => 'var(--mod-vaccination)'],
+        self::APPOINTMENT => ['label' => 'Termin',       'icon' => 'calendar',    'color' => 'var(--mod-appointment)'],
+        self::CONTACT     => ['label' => 'Kontakt',      'icon' => 'user',        'color' => 'var(--mod-contact)'],
+        self::ACTIVITY    => ['label' => 'Aktivität',    'icon' => 'run',         'color' => 'var(--mod-activity)'],
+        self::COST        => ['label' => 'Kosten',       'icon' => 'euro',        'color' => 'var(--mod-cost)'],
     ];
 
     public static function all(): array
@@ -59,6 +65,11 @@ final class Modules
     public static function icon(string $module): string
     {
         return self::META[$module]['icon'] ?? 'dot';
+    }
+
+    public static function color(string $module): string
+    {
+        return self::META[$module]['color'] ?? 'var(--muted)';
     }
 
     /** Wirft, wenn ein unbekannter Modulname durchgereicht wird. */

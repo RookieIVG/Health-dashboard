@@ -5,12 +5,15 @@ require __DIR__ . '/_init.php';
 use Health\App;
 use Health\Csrf;
 use Health\FindingsRepository;
+use Health\ContactsRepository;
+use Health\Modules;
 use Health\View;
 
 $app = App::boot();
 $app->auth->requireLogin();
 
 $repo  = new FindingsRepository($app);
+$institutions = (new ContactsRepository($app))->listAll();
 $error = $ok = null;
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
@@ -78,7 +81,7 @@ View::start($app, ['title' => 'Befunde – ' . $app->config['app']['name'], 'act
 <?php endif; ?>
 
 <div class="panel">
-  <h1>Befunde</h1>
+  <h1><?= View::moduleDot(Modules::FINDING) ?>Befunde</h1>
   <p class="sub"><?= count($list) ?> Einträge<?= $filters['archived'] ? ' im Archiv' : '' ?></p>
 
   <form method="get" style="margin-bottom:12px">
@@ -181,16 +184,24 @@ View::start($app, ['title' => 'Befunde – ' . $app->config['app']['name'], 'act
       </div>
     </div>
 
-    <div class="field-row">
-      <div>
-        <label for="institution">Einrichtung</label>
-        <input type="text" id="institution" name="institution" maxlength="200">
-      </div>
-      <div>
-        <label for="doctor">Ärztin / Arzt</label>
-        <input type="text" id="doctor" name="doctor" maxlength="200">
-      </div>
-    </div>
+    <label for="contact_id">Einrichtung / Kontakt</label>
+    <select id="contact_id" name="contact_id">
+      <option value="">– keine Auswahl –</option>
+      <?php foreach ($institutions as $inst): ?>
+        <option value="<?= (int)$inst['id'] ?>"><?= App::e($inst['name']) ?></option>
+      <?php endforeach; ?>
+    </select>
+    <label for="contact_new">oder neu anlegen</label>
+    <input type="text" id="contact_new" name="contact_new" maxlength="200"
+           placeholder="nur ausfüllen, wenn nicht in der Liste oben">
+    <p class="hint">
+      Kontakte werden zentral verwaltet – eine Umbenennung wirkt sich
+      überall aus, wo sie zugeordnet sind. Verwaltung unter
+      <a href="<?= App::url('/contacts.php') ?>">Kontakte</a>.
+    </p>
+
+    <label for="doctor">Ärztin / Arzt</label>
+    <input type="text" id="doctor" name="doctor" maxlength="200">
 
     <label for="summary">Kurzfassung</label>
     <input type="text" id="summary" name="summary" maxlength="400"

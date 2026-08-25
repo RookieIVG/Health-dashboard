@@ -17,19 +17,36 @@ $modules = array_values(array_filter(
     fn($m) => Modules::isValid((string)$m)
 ));
 
+$customFrom = (string)($_GET['from'] ?? '');
+$customTo   = (string)($_GET['to'] ?? '');
+$hasCustomRange = preg_match('/^\d{4}-\d{2}-\d{2}$/', $customFrom)
+               && preg_match('/^\d{4}-\d{2}-\d{2}$/', $customTo);
+
 $now  = new DateTimeImmutable('now', $tz);
-$from = match ($preset) {
-    '7d'    => $now->modify('-7 days'),
-    '90d'   => $now->modify('-90 days'),
-    '1y'    => $now->modify('-1 year'),
-    'all'   => null,
-    default => $now->modify('-30 days'),
-};
+$toUtc = null;
+
+if ($hasCustomRange) {
+    $preset = 'custom';
+    $from   = new DateTimeImmutable($customFrom, $tz);
+    // Falls "von" nach "bis" liegt, einfach vertauschen statt eine
+    // leere Ergebnisliste ohne Erklärung anzuzeigen.
+    $to     = new DateTimeImmutable($customTo, $tz);
+    if ($from > $to) { [$from, $to] = [$to, $from]; }
+    $toUtc  = $to->setTime(23, 59, 59)->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+} else {
+    $from = match ($preset) {
+        '7d'    => $now->modify('-7 days'),
+        '90d'   => $now->modify('-90 days'),
+        '1y'    => $now->modify('-1 year'),
+        'all'   => null,
+        default => $now->modify('-30 days'),
+    };
+}
 $fromUtc = $from?->setTimezone(new DateTimeZone('UTC'))->format('Y-m-d H:i:s');
 
-$events = $app->timeline()->range($fromUtc, null, $modules ?: null, 300);
+$events = $app->timeline()->range($fromUtc, $toUtc, $modules ?: null, 300);
 $byDay  = $app->timeline()->groupedByDay($events);
-$counts = $app->timeline()->countsByModule($fromUtc);
+$counts = $app->timeline()->countsByModule($fromUtc, $toUtc);
 $bounds = $app->timeline()->bounds();
 
 $WEEKDAYS = ['Monday'=>'Montag','Tuesday'=>'Dienstag','Wednesday'=>'Mittwoch',
@@ -56,14 +73,33 @@ View::start($app, ['title' => 'Timeline – ' . $app->config['app']['name'], 'ac
     <?php endforeach; ?>
   </div>
 
+  <form method="get" class="field-row" style="align-items:flex-end;margin-bottom:12px">
+    <?php foreach ($modules as $mv): ?><input type="hidden" name="m[]" value="<?= App::e($mv) ?>"><?php endforeach; ?>
+    <div>
+      <label for="from">Von</label>
+      <input type="date" id="from" name="from" value="<?= App::e($hasCustomRange ? $customFrom : '') ?>">
+    </div>
+    <div>
+      <label for="to">Bis</label>
+      <input type="date" id="to" name="to" value="<?= App::e($hasCustomRange ? $customTo : '') ?>">
+    </div>
+    <div>
+      <button type="submit" class="secondary">Zeitraum anzeigen</button>
+    </div>
+  </form>
+
   <div class="filters">
     <a class="chip <?= $modules ? '' : 'active' ?>"
-       href="?<?= App::e(http_build_query(['range' => $preset])) ?>">Alle</a>
+       href="?<?= App::e(http_build_query(array_filter(['range' => $preset, 'from' => $hasCustomRange ? $customFrom : null, 'to' => $hasCustomRange ? $customTo : null]))) ?>">Alle</a>
     <?php foreach ($counts as $mod => $n):
           $sel  = in_array($mod, $modules, true);
           $next = $sel ? array_values(array_diff($modules, [$mod])) : array_merge($modules, [$mod]); ?>
       <a class="chip <?= $sel ? 'active' : '' ?>"
-         href="?<?= App::e(http_build_query(array_filter(['range'=>$preset,'m'=>$next]))) ?>">
+         href="?<?= App::e(http_build_query(array_filter([
+             'range' => $preset, 'm' => $next,
+             'from'  => $hasCustomRange ? $customFrom : null,
+             'to'    => $hasCustomRange ? $customTo : null,
+         ]))) ?>">
         <?= App::e(Modules::label($mod)) ?><span class="n"><?= (int)$n ?></span>
       </a>
     <?php endforeach; ?>

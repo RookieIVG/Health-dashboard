@@ -19,7 +19,7 @@ final class LabRepository extends Repository
     protected function table(): string  { return 'lab_visits'; }
     protected function module(): string { return Modules::LAB; }
     protected function dateColumn(): string { return 'visit_date'; }
-    protected function encryptedFields(): array { return ['institution' => true, 'note' => true]; }
+    protected function encryptedFields(): array { return ['note' => true]; }
 
     // =================================================================
     // Tests
@@ -132,16 +132,23 @@ final class LabRepository extends Repository
     /**
      * @param array $values  test_id => Rohwert (numerisch oder Text)
      */
-    public function saveVisit(string $visitDate, array $values, ?string $institution = null,
-                              ?string $note = null, ?int $visitId = null): int
+    public function saveVisit(string $visitDate, array $values, ?int $contactId = null,
+                              ?string $contactNew = null, ?string $note = null, ?int $visitId = null): int
     {
         if (!preg_match('/^\d{4}-\d{2}-\d{2}$/', $visitDate)) {
             throw new InvalidArgumentException('Bitte ein Datum angeben.');
         }
 
-        $fields = ['visit_date' => $visitDate, 'institution' => self::n($institution), 'note' => self::n($note)];
+        $contactsRepo = new ContactsRepository($this->app, $this->ownerId);
+        $contactId = $contactNew !== null && trim($contactNew) !== ''
+            ? $contactsRepo->findOrCreateClinic($contactNew)
+            : $contactId;
+        $contactName = $contactId ? ($contactsRepo->find($contactId)['name'] ?? null) : null;
 
-        return $this->db->transaction(function () use ($fields, $values, $visitId): int {
+        $fields = ['visit_date' => $visitDate, 'note' => self::n($note)];
+        $fields['contact_id'] = $contactId;
+
+        return $this->db->transaction(function () use ($fields, $values, $visitId, $contactName): int {
             if ($visitId === null) {
                 $id = $this->create($fields);
             } else {
@@ -186,7 +193,7 @@ final class LabRepository extends Repository
             $this->touchTimeline(
                 refId:      $id,
                 occurredAt: $fields['visit_date'] . ' 00:00:00',
-                title:      'Laborbefund' . ($fields['institution'] ? ' – ' . $fields['institution'] : ''),
+                title:      'Laborbefund' . ($contactName ? ' – ' . $contactName : ''),
                 summary:    $abnormal ? 'auffällig: ' . implode(', ', array_slice($abnormal, 0, 5)) : null,
                 severity:   $abnormal ? 1 : 0
             );
@@ -197,17 +204,22 @@ final class LabRepository extends Repository
 
     public function visits(int $limit = 100): array
     {
-        return $this->hydrateAll($this->db->all(
+        $rows = $this->hydrateAll($this->db->all(
             'SELECT * FROM lab_visits WHERE user_id = :u ORDER BY visit_date DESC LIMIT '
             . max(1, min($limit, 500)),
             [':u' => $this->ownerId]
         ));
+        ContactsRepository::resolveInto($rows, $this->app, $this->ownerId);
+        return $rows;
     }
 
     public function visit(int $visitId): ?array
     {
         $v = $this->find($visitId);
         if (!$v) return null;
+        $rows = [$v];
+        ContactsRepository::resolveInto($rows, $this->app, $this->ownerId);
+        $v = $rows[0];
         $v['results'] = $this->resultsForVisit($visitId);
         return $v;
     }

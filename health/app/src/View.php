@@ -25,7 +25,7 @@ final class View
      * Bezeichnungen verwenden.
      */
     private static array $account = [
-        ['key' => 'security', 'url' => '/profile/security.php', 'label' => 'Sicherheit'],
+        ['key' => 'security', 'url' => '/profile/security.php', 'label' => 'Konto'],
         ['key' => 'modules',  'url' => '/modules.php',          'label' => 'Module ordnen'],
         ['key' => 'users',    'url' => '/admin/users.php',      'label' => 'Benutzer', 'admin' => true],
         ['key' => 'logout',   'url' => '/logout.php',           'label' => 'Abmelden'],
@@ -62,7 +62,7 @@ final class View
 <link rel="icon" href="<?= App::e(self::asset('/assets/brand/favicon.svg')) ?>" type="image/svg+xml">
 <link rel="icon" href="<?= App::url('/assets/brand/favicon.ico') ?>" sizes="32x32">
 <link rel="apple-touch-icon" href="<?= App::url('/assets/brand/icon-180.png') ?>">
-<link rel="manifest" href="<?= App::url('/assets/brand/site.webmanifest') ?>">
+<link rel="manifest" href="<?= App::url('/manifest.php') ?>">
 <link rel="stylesheet" href="<?= App::e(self::asset('/assets/app.css')) ?>">
 <?= $opt['head'] ?? '' ?>
 </head>
@@ -91,32 +91,22 @@ final class View
           <a href="<?= App::e($item['url']) ?>" target="_blank" rel="noopener noreferrer"
              class="ext"><?= App::e($item['label']) ?> <span aria-hidden="true">↗</span></a>
         <?php else: ?>
+          <?php $navColor = ModuleRegistry::colorForDefKey($item['key']); ?>
           <a href="<?= App::url($item['url']) ?>"
-             class="<?= $active === $item['key'] ? 'active' : '' ?>"><?= App::e($item['label']) ?></a>
+             class="<?= $active === $item['key'] ? 'active' : '' ?>">
+            <?php if ($navColor): ?><?= self::colorDot($navColor) ?><?php endif; ?>
+            <?= App::e($item['label']) ?>
+          </a>
         <?php endif; ?>
       <?php endforeach; ?>
 
-      <?php /* Im Klappmenü stehen die Kontopunkte mit drin – ein zweites
-               Menü auf dem Telefon wäre nur ein zusätzlicher Tipp. */ ?>
       <span class="nav-sep"></span>
       <?php foreach (self::$account as $item):
             if (!empty($item['admin']) && ($user['role'] ?? '') !== 'admin') continue; ?>
-        <a class="acct-only <?= $active === $item['key'] ? 'active' : '' ?>"
-           href="<?= App::url($item['url']) ?>"><?= App::e($item['label']) ?></a>
+        <a href="<?= App::url($item['url']) ?>"
+           class="<?= $active === $item['key'] ? 'active' : '' ?>"><?= App::e($item['label']) ?></a>
       <?php endforeach; ?>
     </nav>
-
-    <span class="acct-wrap">
-      <input type="checkbox" id="acct-toggle" class="nav-toggle">
-      <label for="acct-toggle" class="acct-btn" aria-label="Konto"><span aria-hidden="true">☰</span></label>
-      <nav id="acctnav">
-        <?php foreach (self::$account as $item):
-              if (!empty($item['admin']) && ($user['role'] ?? '') !== 'admin') continue; ?>
-          <a href="<?= App::url($item['url']) ?>"
-             class="<?= $active === $item['key'] ? 'active' : '' ?>"><?= App::e($item['label']) ?></a>
-        <?php endforeach; ?>
-      </nav>
-    </span>
 
     <button type="button" class="theme-toggle" data-theme-toggle
             aria-label="Darstellung wechseln" title="Hell / Dunkel / Automatisch">
@@ -135,6 +125,9 @@ final class View
     {
         if ($withScript) {
             echo '<script src="' . App::e(self::asset('/assets/ui.js')) . '" defer></script>' . "\n";
+            // Bricht sofort ab, wenn das Push-Panel auf der Seite fehlt –
+            // unbedenklich, überall einzubinden statt seitenweise zu prüfen.
+            echo '<script src="' . App::e(self::asset('/assets/push.js')) . '" defer></script>' . "\n";
         }
         echo "</main>\n</body>\n</html>\n";
     }
@@ -180,6 +173,25 @@ final class View
     // -----------------------------------------------------------------
     // Bausteine
     // -----------------------------------------------------------------
+
+    // -----------------------------------------------------------------
+
+    /** Punkt direkt aus einer bereits aufgelösten CSS-Farbe (z.B. "var(--mod-finding)"). */
+    public static function colorDot(string $color): string
+    {
+        return '<span style="display:inline-block;width:11px;height:11px;border-radius:3px;'
+             . 'background:' . App::e($color) . ';margin-right:8px;vertical-align:middle" aria-hidden="true"></span>';
+    }
+
+    /**
+     * Kleiner Farbpunkt vor einer Modul-Überschrift, dieselbe Farbe wie
+     * in der gestapelten Timeline-Kachel - zieht sich so über Übersicht
+     * und Modulseiten hinweg durch, statt nur an einer Stelle zu gelten.
+     */
+    public static function moduleDot(string $moduleKey): string
+    {
+        return self::colorDot(Modules::color($moduleKey));
+    }
 
     public static function flash(?string $text, string $type = 'ok'): void
     {

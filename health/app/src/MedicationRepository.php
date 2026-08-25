@@ -9,10 +9,9 @@ use RuntimeException;
 /**
  * Medikationsverwaltung.
  *
- * Der Einnahmeplan folgt dem klassischen Blisterschema – morgens,
- * mittags, abends, nachts – statt exakter Uhrzeiten. So wird ein Plan
- * in der Praxis auch tatsächlich notiert, und es lässt sich damit ohne
- * Zusatzaufwand ein Tagesplan zusammenstellen.
+ * Der Einnahmeplan arbeitet mit exakten Uhrzeiten statt Tageszeit-
+ * Kategorien – das ist die Grundlage für Erinnerungen, die tatsächlich
+ * zum richtigen Zeitpunkt kommen, statt nur "irgendwann morgens".
  */
 final class MedicationRepository extends Repository
 {
@@ -33,15 +32,7 @@ final class MedicationRepository extends Repository
 
     public const STATUS = ['active' => 'aktiv', 'paused' => 'pausiert', 'stopped' => 'abgesetzt'];
 
-    public const PERIODS = [
-        'morning' => 'morgens', 'noon' => 'mittags', 'evening' => 'abends', 'night' => 'nachts',
-    ];
-
     public const WEEKDAYS = [1 => 'Mo', 2 => 'Di', 3 => 'Mi', 4 => 'Do', 5 => 'Fr', 6 => 'Sa', 7 => 'So'];
-
-    public const PERIOD_TIMES = [
-        'morning' => '08:00', 'noon' => '12:00', 'evening' => '18:00', 'night' => '22:00',
-    ];
 
     public const CYCLES = [
         'daily'    => 'täglich',
@@ -158,16 +149,19 @@ final class MedicationRepository extends Repository
     // =================================================================
 
     /**
-     * @param string $cycleType 'daily' | 'weekly' | 'interval'
-     * @param string $weekdays  nur bei 'weekly' relevant, z.B. "135" für Mo/Mi/Fr
+     * @param string $intakeTime Uhrzeit "HH:MM"
+     * @param string $cycleType  'daily' | 'weekly' | 'interval'
+     * @param string $weekdays   nur bei 'weekly' relevant, z.B. "135" für Mo/Mi/Fr
      */
     public function addScheduleRow(
-        int $medicationId, string $period, string $dose, string $cycleType,
+        int $medicationId, string $intakeTime, string $dose, string $cycleType,
         string $weekdays = '', ?int $intervalDays = null, ?string $anchorDate = null,
         ?float $doseQty = null
     ): int {
         $this->assertOwnMedication($medicationId);
-        if (!isset(self::PERIODS[$period])) throw new InvalidArgumentException('Ungültige Tageszeit.');
+        if (!preg_match('/^([01]\d|2[0-3]):([0-5]\d)$/', $intakeTime)) {
+            throw new InvalidArgumentException('Bitte eine gültige Uhrzeit angeben.');
+        }
         if (!isset(self::CYCLES[$cycleType])) $cycleType = 'weekly';
 
         $dose = trim($dose);
@@ -188,20 +182,19 @@ final class MedicationRepository extends Repository
 
         $st = $this->db->pdo()->prepare(
             'INSERT INTO medication_schedule
-                (medication_id, user_id, period, cycle_type, weekdays, interval_days, anchor_date,
+                (medication_id, user_id, intake_time, cycle_type, weekdays, interval_days, anchor_date,
                  dose_enc, dose_qty, sort_order)
-             VALUES (:m, :u, :p, :ct, :w, :iv, :an, :d, :dq, :so)'
+             VALUES (:m, :u, :t, :ct, :w, :iv, :an, :d, :dq, 100)'
         );
         $st->bindValue(':m', $medicationId, \PDO::PARAM_INT);
         $st->bindValue(':u', $this->ownerId, \PDO::PARAM_INT);
-        $st->bindValue(':p', $period);
+        $st->bindValue(':t', $intakeTime . ':00');
         $st->bindValue(':ct', $cycleType);
         $st->bindValue(':w', $weekdaysNorm);
         $st->bindValue(':iv', $intervalDays, $intervalDays === null ? \PDO::PARAM_NULL : \PDO::PARAM_INT);
         $st->bindValue(':an', $anchorDate, $anchorDate === null ? \PDO::PARAM_NULL : \PDO::PARAM_STR);
         $st->bindValue(':d', $this->crypto->enc($this->dek(), $dose, 'medication_schedule.dose'), \PDO::PARAM_LOB);
         $st->bindValue(':dq', $doseQty, $doseQty === null ? \PDO::PARAM_NULL : \PDO::PARAM_STR);
-        $st->bindValue(':so', array_search($period, array_keys(self::PERIODS), true) * 10);
         $st->execute();
 
         return (int)$this->db->pdo()->lastInsertId();
@@ -217,7 +210,7 @@ final class MedicationRepository extends Repository
     {
         $rows = $this->db->all(
             'SELECT * FROM medication_schedule WHERE medication_id = :m AND user_id = :u
-             ORDER BY sort_order, id', [':m' => $medicationId, ':u' => $this->ownerId]
+             ORDER BY intake_time, id', [':m' => $medicationId, ':u' => $this->ownerId]
         );
         foreach ($rows as &$r) {
             $r['dose'] = $this->crypto->dec($this->dek(), $r['dose_enc'], 'medication_schedule.dose');
@@ -232,11 +225,8 @@ final class MedicationRepository extends Repository
 
     /**
      * Nächster fälliger Zeitpunkt über alle Plan-Slots eines Präparats.
-     * Tageszeiten sind keine exakten Uhrzeiten – für Sortierung und die
-     * Überfällig-Markierung wird mit den Richtwerten aus PERIOD_TIMES
-     * gerechnet (08/12/18/22 Uhr). Das ist eine Näherung, keine Prognose.
      *
-     * @return array{at: \DateTimeImmutable, schedule_id: int, period: string, dose: string}|null
+     * @return array{at: \DateTimeImmutable, schedule_id: int, intake_time: string, dose: string}|null
      */
     public function nextDueForMedication(int $medicationId): ?array
     {
@@ -244,7 +234,8 @@ final class MedicationRepository extends Repository
         foreach ($this->scheduleFor($medicationId) as $row) {
             $at = $this->nextOccurrence($row);
             if ($at !== null && ($best === null || $at < $best['at'])) {
-                $best = ['at' => $at, 'schedule_id' => (int)$row['id'], 'period' => $row['period'], 'dose' => $row['dose']];
+                $best = ['at' => $at, 'schedule_id' => (int)$row['id'],
+                         'intake_time' => substr((string)$row['intake_time'], 0, 5), 'dose' => $row['dose']];
             }
         }
         return $best;
@@ -263,8 +254,7 @@ final class MedicationRepository extends Repository
             if ($d === 0 && $this->takenOn((int)$row['id'], $date)) {
                 continue; // heute schon abgezeichnet – nächstes Vorkommen suchen
             }
-            $time = self::PERIOD_TIMES[$row['period']] ?? '08:00';
-            return new \DateTimeImmutable($date->format('Y-m-d') . ' ' . $time, $tz);
+            return new \DateTimeImmutable($date->format('Y-m-d') . ' ' . $row['intake_time'], $tz);
         }
         return null; // z.B. Intervall mit ungültigen Angaben
     }
@@ -323,7 +313,14 @@ final class MedicationRepository extends Repository
         $takenUtc = $this->toUtc(str_replace('T', ' ', trim($takenAtLocal)));
         $dek = $this->dek();
 
-        return $this->db->transaction(function () use ($medicationId, $scheduleId, $takenUtc, $quantity, $doseText, $note, $dek): int {
+        $med = $this->db->one('SELECT name_enc, strength_enc FROM medications WHERE id = :id AND user_id = :u',
+                              [':id' => $medicationId, ':u' => $this->ownerId]);
+        $medName = $this->crypto->dec($dek, $med['name_enc'], 'medications.name');
+        $medStrength = $med['strength_enc'] !== null ? $this->crypto->dec($dek, $med['strength_enc'], 'medications.strength') : null;
+
+        return $this->db->transaction(function () use (
+            $medicationId, $scheduleId, $takenUtc, $quantity, $doseText, $note, $dek, $medName, $medStrength
+        ): int {
             $st = $this->db->pdo()->prepare(
                 'INSERT INTO medication_intakes (medication_id, schedule_id, user_id, taken_at, quantity, dose_enc, note_enc)
                  VALUES (:m, :s, :u, :t, :q, :d, :n)'
@@ -339,6 +336,8 @@ final class MedicationRepository extends Repository
             $st->bindValue(':n', $noteEnc, $noteEnc === null ? \PDO::PARAM_NULL : \PDO::PARAM_LOB);
             $st->execute();
 
+            $intakeId = (int)$this->db->pdo()->lastInsertId();
+
             if ($quantity !== null) {
                 $this->db->run(
                     'UPDATE medications SET stock_quantity = stock_quantity - :q
@@ -347,7 +346,23 @@ final class MedicationRepository extends Repository
                 );
             }
 
-            return (int)$this->db->pdo()->lastInsertId();
+            // Eigener event_type ('intake'), nicht 'entry' – und als refId
+            // die Intake-ID, nicht die Medikaments-ID: sonst würde jede
+            // Einnahme denselben Timeline-Eintrag überschreiben (die
+            // Kombination user+module+refId+event_type ist eindeutig),
+            // und beim Löschen einer Einnahme dürfte niemals versehentlich
+            // der "begonnen/abgesetzt"-Eintrag desselben Präparats
+            // mitgelöscht werden, nur weil die IDs zufällig übereinstimmen.
+            $this->touchTimeline(
+                refId:      $intakeId,
+                occurredAt: $takenUtc,
+                title:      'Eingenommen: ' . $medName . ($medStrength ? ' ' . $medStrength : ''),
+                summary:    trim(($doseText ?? '') . ($note ? ' · ' . $note : '')) ?: null,
+                severity:   0,
+                eventType:  'intake'
+            );
+
+            return $intakeId;
         });
     }
 
@@ -369,6 +384,19 @@ final class MedicationRepository extends Repository
                     [':q' => $row['quantity'], ':id' => $row['medication_id'], ':u' => $this->ownerId]
                 );
             }
+
+            // Gezielt nur den 'intake'-Eintrag löschen, nicht die generische
+            // timeline()->remove() (die löscht ALLE event_types zu einer
+            // refId) – die Intake-ID und die Medikaments-ID kommen aus
+            // getrennten Zählern und können sich zufällig numerisch
+            // überschneiden. Ohne die event_type-Einschränkung könnte das
+            // Löschen einer Einnahme sonst versehentlich den
+            // "begonnen/abgesetzt"-Eintrag eines ganz anderen Präparats
+            // mitlöschen, nur weil die IDs zufällig gleich sind.
+            $this->db->run(
+                "DELETE FROM timeline_events WHERE module = :m AND ref_id = :r AND event_type = 'intake' AND user_id = :u",
+                [':m' => $this->module(), ':r' => $row['id'], ':u' => $this->ownerId]
+            );
         });
     }
 

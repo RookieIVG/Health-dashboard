@@ -5,6 +5,7 @@ require __DIR__ . '/_init.php';
 use Health\App;
 use Health\CostsRepository as Costs;
 use Health\Csrf;
+use Health\Modules;
 use Health\View;
 
 $app = App::boot();
@@ -50,7 +51,7 @@ View::start($app, ['title' => 'Kosten – ' . $app->config['app']['name'], 'acti
 <?php View::flash($ok, 'ok'); View::flash($error, 'error'); ?>
 
 <div class="panel">
-  <h1>Kosten und Erstattungen</h1>
+  <h1><?= View::moduleDot(Modules::COST) ?>Kosten und Erstattungen</h1>
   <?php if ($years): ?>
   <div class="filters">
     <?php foreach ($years as $y): ?>

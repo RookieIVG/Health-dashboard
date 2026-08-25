@@ -22,8 +22,17 @@ final class Csrf
 
     public static function check(): bool
     {
-        $sent = $_POST['_csrf'] ?? '';
-        return is_string($sent)
+        return self::checkToken((string)($_POST['_csrf'] ?? ''));
+    }
+
+    /**
+     * Wie check(), aber mit explizit übergebenem Token statt $_POST –
+     * für Endpunkte, die JSON statt eines Formulars empfangen (z.B.
+     * die Push-Anmeldung, die der Browser per fetch() sendet).
+     */
+    public static function checkToken(string $sent): bool
+    {
+        return $sent !== ''
             && !empty($_SESSION[self::KEY])
             && hash_equals($_SESSION[self::KEY], $sent);
     }

@@ -35,7 +35,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     occurredLocal: (string)($_POST['occurred_at'] ?? ''),
                     values: (array)($_POST['f'] ?? []),
                     note: trim((string)($_POST['note'] ?? '')) ?: null,
-                    entryId: $entryId
+                    entryId: $entryId,
+                    tagsRaw: (string)($_POST['tags'] ?? '')
                 );
                 $ok = $entryId ? 'Eintrag aktualisiert.' : 'Eintrag gespeichert.';
                 break;
@@ -92,6 +93,14 @@ View::start($app, ['title' => $type['label'], 'active' => 'diary']);
     · <a href="<?= App::url('/diary.php') ?>">alle Tagebücher</a>
     · <a href="<?= App::url('/diary_setup.php?type=' . $typeId) ?>">Einstellungen</a>
   </p>
+
+  <?php if ($type['info_text']): ?>
+  <details style="margin-top:10px">
+    <summary style="cursor:pointer;color:var(--accent)">Info zu diesem Tagebuch</summary>
+    <div class="sub" style="white-space:pre-line;margin-top:10px"><?= App::e($type['info_text']) ?></div>
+  </details>
+  <?php endif; ?>
+
   <div class="filters">
     <?php foreach ([7 => '7 Tage', 30 => '30 Tage', 90 => '90 Tage', 365 => '1 Jahr', 0 => 'Alles'] as $d => $l): ?>
       <a class="chip <?= $days === $d ? 'active' : '' ?>"
@@ -116,6 +125,62 @@ View::start($app, ['title' => $type['label'], 'active' => 'diary']);
 </div>
 <?php endif; ?>
 
+<div class="panel">
+  <h2>Einträge</h2>
+  <?php if (!$entries): ?>
+    <p class="empty">Keine Einträge im gewählten Zeitraum.</p>
+  <?php else: ?>
+    <?php
+    $lastDay = null;
+    foreach ($entries as $e):
+        $day = $app->local($e['occurred_at'], 'd.m.Y');
+        if ($day !== $lastDay): $lastDay = $day; ?>
+          <div class="day-head" style="margin-top:14px"><?= App::e($day) ?></div>
+        <?php endif; ?>
+      <div class="ev">
+        <div class="t"><?= App::e($app->local($e['occurred_at'], 'H:i')) ?></div>
+        <div class="body">
+          <div class="title">
+            <?php
+            $parts = [];
+            foreach ($e['values'] as $v) {
+                $txt = DiaryRepository::displayValue($v);
+                if ($txt === '' || $txt === 'nein') continue;
+                $parts[] = $v['field']['label'] . ': ' . $txt;
+            }
+            echo App::e($parts ? implode(' · ', array_slice($parts, 0, 3)) : 'Eintrag');
+            ?>
+          </div>
+          <?php if (count($parts) > 3): ?>
+            <div class="sum"><?= App::e(implode(' · ', array_slice($parts, 3))) ?></div>
+          <?php endif; ?>
+          <?php if (!empty($e['note'])): ?>
+            <div class="sum"><?= App::e($e['note']) ?></div>
+          <?php endif; ?>
+          <?php if (!empty($e['tags'])): ?>
+            <div class="filters" style="margin-top:6px">
+              <?php foreach ($e['tags'] as $t): ?>
+                <span class="chip"><?= App::e($t['name']) ?></span>
+              <?php endforeach; ?>
+            </div>
+          <?php endif; ?>
+        </div>
+        <div class="t" style="width:auto">
+          <div class="actions" style="margin:0">
+            <a class="btn secondary small" style="margin:0"
+               href="?type=<?= $typeId ?>&amp;days=<?= $days ?>&amp;edit=<?= (int)$e['id'] ?>">Ändern</a>
+            <form method="post" data-confirm="Diesen Eintrag löschen?" style="margin:0">
+              <?= Csrf::field() ?>
+              <input type="hidden" name="action" value="delete">
+              <input type="hidden" name="entry_id" value="<?= (int)$e['id'] ?>">
+              <button type="submit" class="secondary small">Löschen</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    <?php endforeach; ?>
+  <?php endif; ?>
+</div>
 <div class="panel">
   <h2><?= $editing ? 'Eintrag bearbeiten' : 'Neuer Eintrag' ?></h2>
   <form method="post">
@@ -194,6 +259,15 @@ View::start($app, ['title' => $type['label'], 'active' => 'diary']);
     <label for="note">Notiz</label>
     <textarea id="note" name="note" rows="3"><?= App::e($editing['note'] ?? '') ?></textarea>
 
+    <label for="tags">Zutaten / Stichworte (Komma-getrennt)</label>
+    <input type="text" id="tags" name="tags" autocomplete="off"
+           value="<?= App::e(implode(', ', array_column($editing['tags'] ?? [], 'name'))) ?>"
+           placeholder="z.B. Milch, Weizen, Zwiebel">
+    <p class="hint">
+      Optional, aber je genauer, desto brauchbarer die Musteranalyse
+      unter <a href="<?= App::url('/diary_correlation.php') ?>">Auswertung</a>.
+    </p>
+
     <button type="submit" class="auto"><?= $editing ? 'Aktualisieren' : 'Speichern' ?></button>
     <?php if ($editing): ?>
       <p class="foot"><a href="?type=<?= $typeId ?>&amp;days=<?= $days ?>">Bearbeitung abbrechen</a></p>
@@ -201,53 +275,4 @@ View::start($app, ['title' => $type['label'], 'active' => 'diary']);
   </form>
 </div>
 
-<div class="panel">
-  <h2>Einträge</h2>
-  <?php if (!$entries): ?>
-    <p class="empty">Keine Einträge im gewählten Zeitraum.</p>
-  <?php else: ?>
-    <?php
-    $lastDay = null;
-    foreach ($entries as $e):
-        $day = $app->local($e['occurred_at'], 'd.m.Y');
-        if ($day !== $lastDay): $lastDay = $day; ?>
-          <div class="day-head" style="margin-top:14px"><?= App::e($day) ?></div>
-        <?php endif; ?>
-      <div class="ev">
-        <div class="t"><?= App::e($app->local($e['occurred_at'], 'H:i')) ?></div>
-        <div class="body">
-          <div class="title">
-            <?php
-            $parts = [];
-            foreach ($e['values'] as $v) {
-                $txt = DiaryRepository::displayValue($v);
-                if ($txt === '' || $txt === 'nein') continue;
-                $parts[] = $v['field']['label'] . ': ' . $txt;
-            }
-            echo App::e($parts ? implode(' · ', array_slice($parts, 0, 3)) : 'Eintrag');
-            ?>
-          </div>
-          <?php if (count($parts) > 3): ?>
-            <div class="sum"><?= App::e(implode(' · ', array_slice($parts, 3))) ?></div>
-          <?php endif; ?>
-          <?php if (!empty($e['note'])): ?>
-            <div class="sum"><?= App::e($e['note']) ?></div>
-          <?php endif; ?>
-        </div>
-        <div class="t" style="width:auto">
-          <div class="actions" style="margin:0">
-            <a class="btn secondary small" style="margin:0"
-               href="?type=<?= $typeId ?>&amp;days=<?= $days ?>&amp;edit=<?= (int)$e['id'] ?>">Ändern</a>
-            <form method="post" data-confirm="Diesen Eintrag löschen?" style="margin:0">
-              <?= Csrf::field() ?>
-              <input type="hidden" name="action" value="delete">
-              <input type="hidden" name="entry_id" value="<?= (int)$e['id'] ?>">
-              <button type="submit" class="secondary small">Löschen</button>
-            </form>
-          </div>
-        </div>
-      </div>
-    <?php endforeach; ?>
-  <?php endif; ?>
-</div>
 <?php View::end($app); ?>

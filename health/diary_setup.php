@@ -48,6 +48,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $repo->deleteField((int)($_POST['field_id'] ?? 0));
                 $ok = 'Feld gelöscht.';
                 break;
+            case 'save_info':
+                $repo->setInfoText($typeId, (string)($_POST['info_text'] ?? ''));
+                $ok = 'Infotext gespeichert.';
+                break;
         }
         $type = $repo->type($typeId); // Anzeige aktualisieren
     } catch (\Throwable $e) {
@@ -111,6 +115,22 @@ View::start($app, ['title' => $type['label'] . ' – Einstellungen', 'active' =>
       </button>
     </form>
   </div>
+</div>
+
+<div class="panel">
+  <h2>Infotext</h2>
+  <p class="sub">
+    Wird im Tagebuch selbst als aufklappbarer Hinweis angezeigt – z.&nbsp;B.
+    eine Erklärung, wie die einzelnen Felder gemeint sind und wofür sie
+    genutzt werden können. Auch bei mitgelieferten Tagebüchern änderbar,
+    unabhängig von Bezeichnung und Feldern.
+  </p>
+  <form method="post">
+    <?= Csrf::field() ?>
+    <input type="hidden" name="action" value="save_info">
+    <textarea id="info_text" name="info_text" rows="10"><?= App::e($type['info_text'] ?? '') ?></textarea>
+    <button type="submit" class="auto secondary">Speichern</button>
+  </form>
 </div>
 
 <div class="panel">

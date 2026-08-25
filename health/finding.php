@@ -6,6 +6,7 @@ use Health\App;
 use Health\AttachmentService;
 use Health\Csrf;
 use Health\FindingsRepository;
+use Health\ContactsRepository;
 use Health\Modules;
 use Health\View;
 
@@ -14,6 +15,7 @@ $app->auth->requireLogin();
 
 $repo = new FindingsRepository($app);
 $id   = (int)($_GET['id'] ?? 0);
+$institutions = (new ContactsRepository($app))->listAll();
 
 $error = $ok = null;
 
@@ -191,18 +193,28 @@ View::start($app, ['title' => $f['title'] . ' – Befund', 'active' => 'findings
       </div>
     </div>
 
-    <div class="field-row">
-      <div>
-        <label for="institution">Einrichtung</label>
-        <input type="text" id="institution" name="institution" maxlength="200"
-               value="<?= App::e($f['institution'] ?? '') ?>">
-      </div>
-      <div>
-        <label for="doctor">Ärztin / Arzt</label>
-        <input type="text" id="doctor" name="doctor" maxlength="200"
-               value="<?= App::e($f['doctor'] ?? '') ?>">
-      </div>
-    </div>
+    <label for="contact_id">Einrichtung / Kontakt</label>
+    <select id="contact_id" name="contact_id">
+      <option value="">– keine Auswahl –</option>
+      <?php foreach ($institutions as $inst): ?>
+        <option value="<?= (int)$inst['id'] ?>"
+          <?= isset($f['contact_id']) && (int)$f['contact_id'] === (int)$inst['id'] ? 'selected' : '' ?>>
+          <?= App::e($inst['name']) ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+    <label for="contact_new">oder neu anlegen</label>
+    <input type="text" id="contact_new" name="contact_new" maxlength="200"
+           placeholder="nur ausfüllen, wenn nicht in der Liste oben">
+    <p class="hint">
+      Kontakte werden zentral verwaltet – eine Umbenennung wirkt sich
+      überall aus, wo sie zugeordnet sind. Verwaltung unter
+      <a href="<?= App::url('/contacts.php') ?>">Kontakte</a>.
+    </p>
+
+    <label for="doctor">Ärztin / Arzt</label>
+    <input type="text" id="doctor" name="doctor" maxlength="200"
+           value="<?= App::e($f['doctor'] ?? '') ?>">
 
     <label for="summary">Kurzfassung</label>
     <input type="text" id="summary" name="summary" maxlength="400" value="<?= App::e($f['summary'] ?? '') ?>">

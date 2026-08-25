@@ -34,7 +34,7 @@ View::start($app, ['title' => 'Kumulativbefund – ' . $app->config['app']['name
     <table>
       <thead>
         <tr>
-          <th>Test</th>
+          <th>Laborparameter</th>
           <?php foreach ($data['visits'] as $v): ?>
             <th><?= App::e(date('d.m.y', strtotime($v['visit_date']))) ?></th>
           <?php endforeach; ?>

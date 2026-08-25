@@ -5,6 +5,7 @@ require __DIR__ . '/_init.php';
 use Health\App;
 use Health\Csrf;
 use Health\DiagnosesRepository as Diag;
+use Health\Modules;
 use Health\View;
 
 $app = App::boot();
@@ -36,7 +37,7 @@ View::start($app, ['title' => 'Diagnosen – ' . $app->config['app']['name'], 'a
 <?php View::flash($error, 'error'); ?>
 
 <div class="panel">
-  <h1>Diagnosen</h1>
+  <h1><?= View::moduleDot(Modules::DIAGNOSIS) ?>Diagnosen</h1>
   <p class="sub"><?= count($list) ?> Einträge<?= $showClosed ? '' : ' (nur laufende)' ?></p>
 
   <div class="filters">

@@ -32,7 +32,7 @@ final class App
         $this->db     = new Db($config['db']);
         $this->crypto = new Crypto($config['paths']['keys']);
         $this->audit  = new Audit($this->db, $this->crypto);
-        $this->auth   = new Auth($this->db, $this->crypto, $this->audit, $config['security']);
+        $this->auth   = new Auth($this->db, $this->crypto, $this->audit, $config['security'], $config['app']);
     }
 
     public static function boot(?string $configPath = null): self
@@ -222,6 +222,12 @@ final class App
         return $this->dekCache[$userId] ??= $this->auth->dek($userId);
     }
 
+    /** Verzeichnis der Schlüsseldateien (master.key.php, vapid_private.key.php, ...). */
+    public function keyDir(): string
+    {
+        return $this->config['paths']['keys'];
+    }
+
     /** Nach Logout oder Benutzerwechsel aufrufen. */
     public function clearDekCache(): void
     {
@@ -242,6 +248,21 @@ final class App
     {
         $base = rtrim(self::$instance?->config['app']['base_path'] ?? '', '/');
         return $base . $path;
+    }
+
+    /**
+     * Vollständige URL mit Schema und Host statt nur des Pfads.
+     *
+     * App::url() reicht für Links innerhalb einer HTML-Seite, aber
+     * nicht überall: der Service Worker vergleicht Fenster-URLs beim
+     * Klick auf eine Push-Benachrichtigung gegen echte, vollständige
+     * URLs (window.location.href liefert immer eine vollständige URL,
+     * nie nur einen Pfad) – ein reiner Pfad würde dort nie passen.
+     */
+    public static function absUrl(string $path = '/'): string
+    {
+        $base = self::$instance?->config['app']['base_url'] ?? '';
+        return rtrim($base, '/') . self::url($path);
     }
 
     public static function e(?string $s): string

@@ -5,6 +5,7 @@ require __DIR__ . '/_init.php';
 use Health\AllergiesRepository as Allergies;
 use Health\App;
 use Health\Csrf;
+use Health\Modules;
 use Health\View;
 
 $app = App::boot();
@@ -48,7 +49,7 @@ View::start($app, ['title' => 'Allergien – ' . $app->config['app']['name'], 'a
 <?php endif; ?>
 
 <div class="panel">
-  <h1>Allergien und Unverträglichkeiten</h1>
+  <h1><?= View::moduleDot(Modules::ALLERGY) ?>Allergien und Unverträglichkeiten</h1>
   <p class="sub"><?= count($list) ?> Einträge</p>
 
   <?php if (!$list): ?>

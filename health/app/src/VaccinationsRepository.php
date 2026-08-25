@@ -29,6 +29,18 @@ final class VaccinationsRepository extends Repository
 
         $due = trim((string)($d['next_due_date'] ?? ''));
         $due = preg_match('/^\d{4}-\d{2}-\d{2}$/', $due) ? $due : null;
+
+        // Bleibt das Feld leer, wird der Impfplan Österreich befragt –
+        // aber nur, wenn dafür ein Regelintervall bekannt ist. Ist der
+        // Impfstoff unbekannt oder sieht der Plan keine routinemäßige
+        // Auffrischung vor (z.B. MMR, HPV), bleibt next_due_date null.
+        if ($due === null) {
+            $suggestion = VaccinationPlan::suggestNextDue($vaccine, $given, $this->ownerBirthdate());
+            if ($suggestion !== null) {
+                $due = $suggestion['date'];
+            }
+        }
+
         if ($due !== null && $due < $given) {
             throw new InvalidArgumentException('Die Auffrischung liegt vor der Impfung.');
         }
@@ -70,16 +82,33 @@ final class VaccinationsRepository extends Repository
         ));
     }
 
-    /** Fällige und bald fällige Auffrischungen. */
+    /**
+     * Fällige und bald fällige Auffrischungen.
+     *
+     * Betrachtet wird nur der jeweils letzte Eintrag je Impfstoff
+     * (siehe byVaccine()) – sonst bliebe eine ältere Impfung als
+     * "überfällig" stehen, obwohl längst eine neuere desselben
+     * Impfstoffs eingetragen wurde. Der Auffrischungstermin einer
+     * überholten alten Zeile ist ohne Aussagekraft, sobald es eine
+     * jüngere Impfung desselben Impfstoffs gibt.
+     */
     public function dueSoon(int $withinDays = 90): array
     {
-        return $this->hydrateAll($this->db->all(
-            'SELECT * FROM vaccinations
-             WHERE user_id = :u AND next_due_date IS NOT NULL
-               AND next_due_date <= DATE_ADD(CURDATE(), INTERVAL :d DAY)
-             ORDER BY next_due_date ASC',
-            [':u' => $this->ownerId, ':d' => $withinDays]
-        ));
+        $threshold = date('Y-m-d', strtotime("+{$withinDays} days"));
+
+        $due = array_filter(
+            $this->byVaccine(),
+            fn(array $v): bool => $v['next_due_date'] !== null && $v['next_due_date'] <= $threshold
+        );
+        usort($due, fn($a, $b) => $a['next_due_date'] <=> $b['next_due_date']);
+
+        return array_values($due);
+    }
+
+    /** Geburtsdatum des Datenbesitzers – Klartextspalte, keine Entschlüsselung nötig. */
+    private function ownerBirthdate(): ?string
+    {
+        return $this->db->value('SELECT birthdate FROM users WHERE id = :id', [':id' => $this->ownerId]);
     }
 
     /** Letzte Impfung je Impfstoffname (Klartext-Vergleich nach dem Entschlüsseln). */

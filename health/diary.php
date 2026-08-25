@@ -5,6 +5,7 @@ require __DIR__ . '/_init.php';
 use Health\App;
 use Health\Csrf;
 use Health\DiaryRepository;
+use Health\Modules;
 use Health\View;
 
 $app = App::boot();
@@ -30,6 +31,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 }
 
 $types  = $repo->types();
+$hiddenTypes = array_filter($repo->types(false), fn($t) => (int)$t['is_active'] === 0);
 $counts = $repo->countsByType();
 
 View::start($app, ['title' => 'Tagebücher – ' . $app->config['app']['name'], 'active' => 'diary']);
@@ -37,8 +39,11 @@ View::start($app, ['title' => 'Tagebücher – ' . $app->config['app']['name'], 
 <?php View::flash($ok, 'ok'); View::flash($error, 'error'); ?>
 
 <div class="panel">
-  <h1>Tagebücher</h1>
-  <p class="sub">Fünf sind vorbereitet. Eigene lassen sich frei zusammenstellen.</p>
+  <h1><?= View::moduleDot(Modules::DIARY) ?>Tagebücher</h1>
+  <p class="sub">
+    Fünf sind vorbereitet. Eigene lassen sich frei zusammenstellen.
+    · <a href="<?= App::url('/diary_correlation.php') ?>">Muster erkennen</a>
+  </p>
 
   <div class="mod-list">
     <?php foreach ($types as $t):
@@ -61,6 +66,20 @@ View::start($app, ['title' => 'Tagebücher – ' . $app->config['app']['name'], 
     <?php endforeach; ?>
   </div>
 </div>
+
+<?php if ($hiddenTypes): ?>
+<div class="panel">
+  <h2>Ausgeblendete Tagebücher</h2>
+  <p class="sub">Einträge bleiben erhalten – hier wieder einblenden.</p>
+  <div class="filters">
+    <?php foreach ($hiddenTypes as $t): ?>
+      <a class="chip" href="<?= App::url('/diary_setup.php?type=' . (int)$t['id']) ?>">
+        <?= App::e($t['label']) ?>
+      </a>
+    <?php endforeach; ?>
+  </div>
+</div>
+<?php endif; ?>
 
 <div class="panel">
   <h2>Eigenes Tagebuch anlegen</h2>

@@ -4,6 +4,7 @@ require __DIR__ . '/_init.php';
 
 use Health\App;
 use Health\Csrf;
+use Health\ContactsRepository;
 use Health\LabRepository;
 use Health\View;
 
@@ -14,6 +15,7 @@ $repo    = new LabRepository($app);
 $visitId = (int)($_GET['id'] ?? 0) ?: null;
 $visit   = $visitId ? $repo->visit($visitId) : null;
 $error   = $ok = null;
+$institutions = (new ContactsRepository($app))->listAll();
 
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     Csrf::requireValid();
@@ -24,7 +26,8 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 foreach ((array)($_POST['v'] ?? []) as $tid => $val) $vals[(int)$tid] = $val;
                 $id = $repo->saveVisit(
                     (string)($_POST['visit_date'] ?? ''), $vals,
-                    trim((string)($_POST['institution'] ?? '')) ?: null,
+                    (int)($_POST['contact_id'] ?? 0) ?: null,
+                    trim((string)($_POST['contact_new'] ?? '')) ?: null,
                     trim((string)($_POST['note'] ?? '')) ?: null,
                     $visitId
                 );
@@ -52,12 +55,12 @@ $today = date('Y-m-d');
 $byCategory = [];
 foreach ($tests as $t) $byCategory[$t['category']][] = $t;
 
-View::start($app, ['title' => 'Befundtermin – ' . $app->config['app']['name'], 'active' => 'lab']);
+View::start($app, ['title' => 'Laborbefund – ' . $app->config['app']['name'], 'active' => 'lab']);
 ?>
 <?php View::flash($ok, 'ok'); View::flash($error, 'error'); ?>
 
 <div class="panel">
-  <h1><?= $visit ? 'Befundtermin bearbeiten' : 'Neuer Befundtermin' ?></h1>
+  <h1><?= $visit ? 'Laborbefund bearbeiten' : 'Neuer Laborbefund' ?></h1>
   <p class="sub"><a href="<?= App::url('/lab.php') ?>">zur Übersicht</a></p>
 
   <form method="post">
@@ -70,12 +73,26 @@ View::start($app, ['title' => 'Befundtermin – ' . $app->config['app']['name'],
         <input type="date" id="visit_date" name="visit_date"
                value="<?= App::e($visit['visit_date'] ?? $today) ?>" required>
       </div>
-      <div>
-        <label for="institution">Einrichtung</label>
-        <input type="text" id="institution" name="institution" maxlength="200"
-               value="<?= App::e($visit['institution'] ?? '') ?>">
-      </div>
     </div>
+
+    <label for="contact_id">Einrichtung / Kontakt</label>
+    <select id="contact_id" name="contact_id">
+      <option value="">– keine Auswahl –</option>
+      <?php foreach ($institutions as $inst): ?>
+        <option value="<?= (int)$inst['id'] ?>"
+          <?= isset($visit['contact_id']) && (int)$visit['contact_id'] === (int)$inst['id'] ? 'selected' : '' ?>>
+          <?= App::e($inst['name']) ?>
+        </option>
+      <?php endforeach; ?>
+    </select>
+    <label for="contact_new">oder neu anlegen</label>
+    <input type="text" id="contact_new" name="contact_new" maxlength="200"
+           placeholder="nur ausfüllen, wenn nicht in der Liste oben">
+    <p class="hint">
+      Kontakte werden zentral verwaltet – eine Umbenennung wirkt sich
+      überall aus, wo sie zugeordnet sind. Verwaltung unter
+      <a href="<?= App::url('/contacts.php') ?>">Kontakte</a>.
+    </p>
 
     <?php foreach ($byCategory as $cat => $list): ?>
       <h2 style="margin-top:20px"><?= App::e($cat ?: 'Sonstiges') ?></h2>
@@ -104,7 +121,7 @@ View::start($app, ['title' => 'Befundtermin – ' . $app->config['app']['name'],
 
   <?php if ($visit): ?>
   <div class="actions">
-    <form method="post" data-confirm="Diesen Befundtermin samt Werten löschen?">
+    <form method="post" data-confirm="Diesen Laborbefund samt Werten löschen?">
       <?= Csrf::field() ?>
       <input type="hidden" name="action" value="delete">
       <button type="submit" class="secondary small">Löschen</button>

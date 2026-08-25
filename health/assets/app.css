@@ -1,95 +1,176 @@
 /* =====================================================================
    Gesundheitsdashboard – Stylesheet
    Zwei Farbschemata, mobil zuerst.
+
+   Kein Web-Font: eine nachgeladene Schrift würde die Content-Security-
+   Policy unterlaufen und einem Dritten verraten, dass hier ein
+   Gesundheitsdashboard läuft – aus demselben Grund sind die Diagramme
+   reines SVG statt einer Bibliothek. Charakter kommt stattdessen über
+   Gewichtung, Laufweite und eine bewusste Zahlen-Typografie (Monospace
+   für die großen Vitalwerte) statt über eine zweite Schriftfamilie.
    ===================================================================== */
 
 /* --- Hell (Standard) ------------------------------------------------ */
 :root {
-  --bg:#f4f6f8;
+  --bg:#f3f6f5;
   --panel:#ffffff;
-  --panel-2:#f8fafb;
-  --ink:#17212b;
-  --muted:#61707d;
-  --line:#dfe5ea;
-  --line-soft:#eef2f5;
-  --accent:#0f6e63;
+  --panel-2:#edf3f1;
+  --ink:#16211f;
+  --muted:#5b6e69;
+  --line:#dbe6e2;
+  --line-soft:#eaf1ee;
+  --accent:#0b6b5c;
+  --accent-rgb:11,107,92;
   --accent-ink:#ffffff;
-  --accent-soft:#e6f2f0;
-  --danger:#a6302a;
-  --danger-bg:#fdeceb;
-  --ok:#1f6b3b;
-  --ok-bg:#e9f5ed;
+  --accent-soft:#dcf0ea;
+  --danger:#ad2f27;
+  --danger-bg:#fbeae8;
+  --ok:#1a6b45;
+  --ok-bg:#e7f4ec;
   --warn:#8a5a00;
-  --warn-bg:#fff6e5;
-  --shadow:0 1px 2px rgba(23,33,43,.05);
-  --radius:10px;
+  --warn-bg:#fdf3df;
+  /* Geschichteter statt flacher Schatten – dezente Nahkante plus ein
+     weicher, warmtoniger Streuschatten für Tiefe ohne Schwere. */
+  --shadow:0 1px 2px rgba(20,33,30,.05), 0 10px 28px -16px rgba(20,33,30,.16);
+  --radius:14px;
+  --radius-sm:10px;
   color-scheme: light;
+
+  /* Je Modul eine feste Farbe, für die gestapelte Tagesübersicht der
+     Timeline-Kachel. 12 Module, entlang des Farbkreises verteilt statt
+     nach Bedeutung gewählt - Rot/Gelb/Grün bleiben den Dringlichkeits-
+     Anzeigen anderswo vorbehalten, hier geht es nur um Unterscheidbarkeit. */
+  --mod-medication:#2563eb;
+  --mod-finding:#7c3aed;
+  --mod-lab:#0891b2;
+  --mod-vitals:#db2777;
+  --mod-diary:#d97706;
+  --mod-diagnosis:#4f46e5;
+  --mod-allergy:#dc2626;
+  --mod-vaccination:#16a34a;
+  --mod-appointment:#0d9488;
+  --mod-contact:#64748b;
+  --mod-activity:#ea580c;
+  --mod-cost:#65a30d;
 }
 
 /* --- Dunkel --------------------------------------------------------- */
 /* Nicht bloß invertiert: reines Schwarz erzeugt auf OLED bei Textmengen
-   Nachzieheffekte, und volle Weißwerte blenden. Daher abgesetzte Grautöne
-   und ein aufgehellter Akzent, damit der Kontrast auf dunklem Grund
-   erhalten bleibt. */
+   Nachzieheffekte, und volle Weißwerte blenden. Ein tiefes, sacht
+   grünliches Schwarz statt neutralem Grau hält denselben ruhigen
+   Grundton wie das helle Thema, nur umgekehrt – daher abgesetzte
+   Grautöne und ein aufgehellter Akzent, damit der Kontrast auf
+   dunklem Grund erhalten bleibt. */
 [data-theme="dark"] {
-  --bg:#14181c;
-  --panel:#1c2229;
-  --panel-2:#222a32;
-  --ink:#e3e8ec;
-  --muted:#93a1ac;
-  --line:#2c353e;
-  --line-soft:#242c34;
-  --accent:#4bbfae;
-  --accent-ink:#0d1417;
-  --accent-soft:#1d2f2d;
-  --danger:#f08b83;
-  --danger-bg:#3a2220;
-  --ok:#7fc79a;
-  --ok-bg:#1d2f24;
-  --warn:#e0b45e;
-  --warn-bg:#332a17;
+  --bg:#0e1613;
+  --panel:#16211e;
+  --panel-2:#1c2925;
+  --ink:#e7efec;
+  --muted:#8ea39c;
+  --line:#2a3a35;
+  --line-soft:#223029;
+  --accent:#3fccae;
+  --accent-rgb:63,204,174;
+  --accent-ink:#06231d;
+  --accent-soft:#1a332c;
+  --danger:#ef9088;
+  --danger-bg:#3a221f;
+  --ok:#7ecb9c;
+  --ok-bg:#1b2f22;
+  --warn:#e3b768;
+  --warn-bg:#332711;
   --shadow:none;
+  --radius:14px;
+  --radius-sm:10px;
   color-scheme: dark;
+
+  --mod-medication:#60a5fa;
+  --mod-finding:#a78bfa;
+  --mod-lab:#22d3ee;
+  --mod-vitals:#f472b6;
+  --mod-diary:#fbbf24;
+  --mod-diagnosis:#818cf8;
+  --mod-allergy:#f87171;
+  --mod-vaccination:#4ade80;
+  --mod-appointment:#2dd4bf;
+  --mod-contact:#94a3b8;
+  --mod-activity:#fb923c;
+  --mod-cost:#a3e635;
 }
 
 @media (prefers-color-scheme: dark) {
   [data-theme="auto"] {
-    --bg:#14181c;
-    --panel:#1c2229;
-    --panel-2:#222a32;
-    --ink:#e3e8ec;
-    --muted:#93a1ac;
-    --line:#2c353e;
-    --line-soft:#242c34;
-    --accent:#4bbfae;
-    --accent-ink:#0d1417;
-    --accent-soft:#1d2f2d;
-    --danger:#f08b83;
-    --danger-bg:#3a2220;
-    --ok:#7fc79a;
-    --ok-bg:#1d2f24;
-    --warn:#e0b45e;
-    --warn-bg:#332a17;
+    --bg:#0e1613;
+    --panel:#16211e;
+    --panel-2:#1c2925;
+    --ink:#e7efec;
+    --muted:#8ea39c;
+    --line:#2a3a35;
+    --line-soft:#223029;
+    --accent:#3fccae;
+    --accent-rgb:63,204,174;
+    --accent-ink:#06231d;
+    --accent-soft:#1a332c;
+    --danger:#ef9088;
+    --danger-bg:#3a221f;
+    --ok:#7ecb9c;
+    --ok-bg:#1b2f22;
+    --warn:#e3b768;
+    --warn-bg:#332711;
     --shadow:none;
+    --radius:14px;
+    --radius-sm:10px;
     color-scheme: dark;
+
+    --mod-medication:#60a5fa;
+    --mod-finding:#a78bfa;
+    --mod-lab:#22d3ee;
+    --mod-vitals:#f472b6;
+    --mod-diary:#fbbf24;
+    --mod-diagnosis:#818cf8;
+    --mod-allergy:#f87171;
+    --mod-vaccination:#4ade80;
+    --mod-appointment:#2dd4bf;
+    --mod-contact:#94a3b8;
+    --mod-activity:#fb923c;
+    --mod-cost:#a3e635;
   }
 }
 
 /* --- Grundlagen ----------------------------------------------------- */
 *, *::before, *::after { box-sizing: border-box; }
 
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; overflow-x: hidden; }
 
 body {
   margin: 0;
   background: var(--bg);
   color: var(--ink);
   font: 16px/1.55 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
   transition: background-color .15s ease, color .15s ease;
   padding-bottom: env(safe-area-inset-bottom);
+  /* Sicherheitsnetz: Grid- und Flex-Kinder schrumpfen ohne explizites
+     min-width:0 nicht unter ihre Inhaltsbreite, das wurde zweimal
+     übersehen (Formularfelder, dann Kacheln). Statt jede einzelne
+     Stelle einzeln jagen zu müssen, verhindert das hier zusätzlich,
+     dass die Seite dadurch seitlich über den Rand wächst – bewusst
+     zusätzlich zu den gezielten Korrekturen, nicht stattdessen, sonst
+     bleiben Inhalte irgendwo unsichtbar statt sichtbar zu brechen. */
+  overflow-x: hidden;
 }
 
 a { color: var(--accent); }
+
+/* Sichtbarer Fokusring über alle interaktiven Elemente hinweg, nicht
+   nur bei Formularfeldern – wer mit Tastatur navigiert, muss überall
+   sehen, wo der Fokus gerade steht. */
+a:focus-visible, button:focus-visible, .chip:focus-visible, .icon-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
 
 .wrap {
   max-width: 960px;
@@ -112,20 +193,22 @@ header.top {
   z-index: 20;
   padding-top: env(safe-area-inset-top);
 }
-/* Die Kopfzeile darf breiter sein als der Textinhalt – 960px reichen
-   für Marke, Modulleiste und zwei Schaltflächen nicht aus. */
-header.top .wrap { max-width: 1240px; }
+/* Kopfzeile und Inhalt bündig: dieselbe max-width wie .wrap, keine
+   eigene Ausnahme mehr. Die frühere Verbreiterung stammte aus der Zeit
+   einer flachen, vielteiligen Modulleiste – seit das Menü immer ein
+   kompaktes Klappmenü ist (ein Logo, zwei Knöpfe), wird der Platz
+   nicht mehr gebraucht, und die Abweichung fiel nur noch als
+   Verschiebung zwischen Kopfzeile und Inhalt auf. */
 
 header.top .wrap {
   display: flex;
   align-items: center;
-  flex-wrap: wrap;
   gap: 8px 12px;
   padding-top: 10px;
   padding-bottom: 10px;
 }
 header.top .brand {
-  font-weight: 600;
+  font-weight: 700;
   letter-spacing: -.01em;
   color: var(--ink);
   text-decoration: none;
@@ -151,12 +234,15 @@ header.top .wrap { position: relative; }
   order: 2;
   width: 44px; height: 44px;
   display: flex; align-items: center; justify-content: center;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   cursor: pointer;
   flex: none;
   -webkit-tap-highlight-color: transparent;
+  margin-bottom: 14px;
+  border: 1px solid var(--line);
+  transition: background-color .15s ease, border-color .15s ease;
 }
-.nav-btn:hover { background: var(--panel-2); }
+.nav-btn:hover { background: var(--panel-2); border-color: var(--accent); }
 .nav-toggle:focus-visible + .nav-btn { outline: 2px solid var(--accent); outline-offset: 1px; }
 
 .nav-btn .bars, .nav-btn .bars::before, .nav-btn .bars::after {
@@ -181,7 +267,7 @@ header.top .wrap { position: relative; }
   background: var(--panel);
   border: 1px solid var(--line);
   border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(0,0,0,.18);
+  box-shadow: 0 12px 32px -8px rgba(0,0,0,.22);
   padding: 6px;
   flex-direction: column;
   z-index: 30;
@@ -190,92 +276,25 @@ header.top .wrap { position: relative; }
 
 #mainnav a {
   padding: 11px 14px;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   text-decoration: none;
   color: var(--ink);
   font-size: .95rem;
+  transition: background-color .12s ease;
 }
 #mainnav a:hover { background: var(--panel-2); }
 #mainnav a.active { color: var(--accent); font-weight: 600; background: var(--accent-soft); }
 
-/* --- Kontomenü ------------------------------------------------------ */
-.acct-wrap { position: relative; display: none; order: 3; flex: 0 0 auto; height: 72px;}
-
-.acct-btn {
-  width: 44px; height: 44px;
-  display: flex; align-items: center; justify-content: center;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  cursor: pointer;
-  color: var(--ink);
-  font-size: 1rem;
-  -webkit-tap-highlight-color: transparent;
-}
-.acct-btn:hover { background: var(--panel-2); }
-
-#acctnav {
-  display: none;
-  position: absolute;
-  right: 0; top: calc(100% + 6px);
-  min-width: 170px;
-  background: var(--panel);
-  border: 1px solid var(--line);
-  border-radius: var(--radius);
-  box-shadow: 0 8px 24px rgba(0,0,0,.18);
-  padding: 6px;
-  flex-direction: column;
-  z-index: 30;
-}
-#acct-toggle:checked ~ #acctnav { display: flex; }
-#acctnav a {
-  padding: 11px 14px; border-radius: 7px;
-  text-decoration: none; color: var(--ink); font-size: .95rem; white-space: nowrap;
-}
-#acctnav a:hover { background: var(--panel-2); }
-#acctnav a.active { color: var(--accent); font-weight: 600; background: var(--accent-soft); }
-
 /* Trennlinie im Klappmenü zwischen Modulen und Konto */
 .nav-sep { display: block; height: 1px; background: var(--line); margin: 6px 8px; }
 
-/* Flache Navigation erst ab 1024 px.
-   Bei sieben Einträgen plus Marke und Umschalter reichen 760 px nicht –
-   die Leiste lief rechts aus dem Bild und legte sich über den
-   Umschalter. Darunter bleibt es beim Klappmenü. */
-@media (min-width: 1024px) {
-  .nav-btn { display: none; }
-  #mainnav {
-    order: 2;                 /* flach: vor dem Umschalter, nicht dahinter */
-    display: flex;
-    position: static;
-    flex-direction: row;
-    flex-wrap: wrap;          /* lieber umbrechen als überlaufen */
-    justify-content: flex-end;
-    box-shadow: none;
-    border: 0;
-    background: none;
-    padding: 0;
-    gap: 2px;
-    min-width: 0;
-    flex: 1 1 auto;
-  }
-  #mainnav a {
-    padding: 7px 9px;
-    font-size: .89rem;
-    white-space: nowrap;
-  }
-}
-
-@media (min-width: 1024px) {
-  /* Konto wandert ins eigene Menü, sonst wird die Leiste zu lang */
-  #mainnav .acct-only, #mainnav .nav-sep { display: none; }
-  .acct-wrap { display: block; }
-}
-
-/* Etwas mehr Luft, sobald der Platz da ist */
-@media (min-width: 1180px) {
-  #mainnav { gap: 4px; }
-  #mainnav a { padding: 7px 12px; font-size: .92rem; }
-}
+/* Ein einziges Menü, bei jeder Bildschirmbreite ein Klappmenü. Erst gab
+   es hier zwei getrennte Knöpfe (Module, Konto) nebeneinander in der
+   Kopfzeile – das war weder aufgeräumt noch bündig mit dem
+   Dunkelmodus-Knopf ausgerichtet. Jetzt genügt ein Knopf für beides.
+   Eine flache Leiste hat sich mit wachsender Modulzahl zudem zweimal
+   als zu schmal erwiesen – erst bei sieben, dann bei elf Einträgen. */
+#mainnav { min-width: 220px; }
 
 /* --- Theme-Umschalter ----------------------------------------------- */
 .theme-toggle {
@@ -284,15 +303,16 @@ header.top .wrap { position: relative; }
   flex: 0 0 auto;
   order: 3;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--panel);
   color: var(--ink);
   font-size: 1.05rem;
   line-height: 1;
   cursor: pointer;
   display: flex; align-items: center; justify-content: center;
+  transition: background-color .15s ease, border-color .15s ease;
 }
-.theme-toggle:hover { background: var(--panel-2); }
+.theme-toggle:hover { background: var(--panel-2); border-color: var(--accent); }
 .theme-toggle span { display: none; }
 [data-theme="auto"]  .theme-toggle .ico-auto  { display: block; font-size: .82rem; font-weight: 700; }
 [data-theme="light"] .theme-toggle .ico-light { display: block; }
@@ -311,10 +331,21 @@ header.top .wrap { position: relative; }
   .panel { padding: 24px; margin-bottom: 20px; }
 }
 
-h1 { font-size: 1.25rem; margin: 0 0 4px; letter-spacing: -.01em; }
-h2 { font-size: 1.03rem; margin: 0 0 12px; }
+h1 {
+  font-size: 1.4rem;
+  font-weight: 700;
+  margin: 0 0 4px;
+  letter-spacing: -.02em;
+  line-height: 1.25;
+}
+h2 {
+  font-size: 1.05rem;
+  font-weight: 700;
+  margin: 0 0 12px;
+  letter-spacing: -.005em;
+}
 .sub { color: var(--muted); font-size: .92rem; margin: 0 0 18px; }
-@media (min-width: 700px) { h1 { font-size: 1.35rem; } }
+@media (min-width: 700px) { h1 { font-size: 1.7rem; } }
 
 /* --- Formulare ------------------------------------------------------ */
 label { display: block; font-size: .88rem; font-weight: 600; margin: 14px 0 5px; }
@@ -325,11 +356,12 @@ select, textarea {
   width: 100%;
   padding: 11px 12px;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   font-size: 16px;              /* unter 16px zoomt iOS beim Fokus hinein */
   font-family: inherit;
   background: var(--panel);
   color: var(--ink);
+  transition: border-color .15s ease;
 }
 textarea { min-height: 110px; resize: vertical; }
 input:focus, select:focus, textarea:focus {
@@ -348,7 +380,7 @@ button, .btn {
   min-height: 44px;
   padding: 11px 16px;
   border: 0;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--accent-ink);
   font-size: 1rem;
@@ -358,12 +390,23 @@ button, .btn {
   text-align: center;
   text-decoration: none;
   display: inline-flex; align-items: center; justify-content: center;
+  transition: transform .12s ease, box-shadow .12s ease, filter .12s ease;
 }
-button:hover, .btn:hover { filter: brightness(1.08); }
+button:hover, .btn:hover {
+  filter: brightness(1.06);
+  box-shadow: 0 8px 20px -8px rgba(var(--accent-rgb),.45);
+  transform: translateY(-1px);
+}
+button:active, .btn:active { transform: translateY(0); filter: brightness(.98); }
 button.secondary, .btn.secondary {
   background: transparent;
   color: var(--accent);
   border: 1px solid var(--line);
+}
+button.secondary:hover, .btn.secondary:hover {
+  box-shadow: none;
+  border-color: var(--accent);
+  background: var(--accent-soft);
 }
 button.small { width: auto; margin: 0; min-height: 36px; padding: 6px 12px; font-size: .85rem; }
 
@@ -376,10 +419,18 @@ button.small { width: auto; margin: 0; min-height: 36px; padding: 6px 12px; font
 .actions button { margin-top: 0; width: auto; }
 
 /* --- Meldungen ------------------------------------------------------ */
-.msg { padding: 11px 14px; border-radius: 8px; font-size: .92rem; margin-bottom: 14px; }
-.msg.error { background: var(--danger-bg); color: var(--danger); }
-.msg.ok    { background: var(--ok-bg);     color: var(--ok); }
-.msg.warn  { background: var(--warn-bg);   color: var(--warn); }
+/* Linker Farbstreifen zusätzlich zur Hintergrundfläche - liest sich
+   wie eine Befundzeile mit Ampelfarbe, nicht nur eine getönte Box. */
+.msg {
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  font-size: .92rem;
+  margin-bottom: 14px;
+  border-left: 3px solid transparent;
+}
+.msg.error { background: var(--danger-bg); color: var(--danger); border-left-color: var(--danger); }
+.msg.ok    { background: var(--ok-bg);     color: var(--ok);     border-left-color: var(--ok); }
+.msg.warn  { background: var(--warn-bg);   color: var(--warn);   border-left-color: var(--warn); }
 
 /* --- Tabellen ------------------------------------------------------- */
 .table-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin: 0 -18px; padding: 0 18px; }
@@ -388,7 +439,8 @@ button.small { width: auto; margin: 0; min-height: 36px; padding: 6px 12px; font
 table { width: 100%; border-collapse: collapse; font-size: .92rem; }
 th, td { text-align: left; padding: 10px 8px; border-bottom: 1px solid var(--line-soft); }
 th {
-  color: var(--muted); font-weight: 600; font-size: .82rem;
+  color: var(--muted); font-weight: 700; font-size: .74rem;
+  text-transform: uppercase; letter-spacing: .05em;
   white-space: nowrap;
 }
 tr:last-child td { border-bottom: 0; }
@@ -431,7 +483,7 @@ tr:last-child td { border-bottom: 0; }
   font-size: 1rem;
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 14px;
   text-align: center;
   word-break: break-all;
@@ -443,7 +495,7 @@ tr:last-child td { border-bottom: 0; }
   font-size: .95rem;
   background: var(--panel-2);
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 14px;
   margin: 0;
   list-style: none;
@@ -458,7 +510,7 @@ code {
   font-family: ui-monospace, Menlo, monospace;
 }
 
-/* --- Filter-Chips --------------------------------------------------- */
+/* --- Filter-Chips ----------------------------------------------------*/
 .filters {
   display: flex;
   gap: 8px;
@@ -480,7 +532,9 @@ code {
   text-decoration: none;
   color: var(--ink);
   flex: none;
+  transition: background-color .12s ease, border-color .12s ease;
 }
+.chip:hover { border-color: var(--accent); }
 .chip.active { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
 .chip .n { opacity: .7; margin-left: 6px; font-size: .82em; }
 
@@ -488,7 +542,8 @@ code {
 .day { margin-bottom: 22px; }
 .day:last-child { margin-bottom: 0; }
 .day-head {
-  font-size: .82rem; font-weight: 700;
+  font-size: .78rem; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em;
   color: var(--muted); padding-bottom: 6px;
   border-bottom: 1px solid var(--line); margin-bottom: 8px;
 }
@@ -510,21 +565,52 @@ code {
 }
 .ev.sev2 .title { color: var(--warn); }
 .ev.sev3 .title { color: var(--danger); }
-.empty { color: var(--muted); text-align: center; padding: 32px 0; }
+
+/* Leerzustand: eine ruhige, gestrichelte Linie über dem Text, wie eine
+   Basislinie am Monitor statt eines Alarms - "hier beginnt der
+   Verlauf", nicht "hier fehlt etwas". Bewusst das einzige Ornament im
+   ganzen Stylesheet, reines CSS ohne eingebettetes SVG. */
+.empty { color: var(--muted); text-align: center; padding: 40px 0 32px; }
+.empty::before {
+  content: "";
+  display: block;
+  width: 72px; height: 2px;
+  margin: 0 auto 16px;
+  border-radius: 2px;
+  background: repeating-linear-gradient(90deg,
+    var(--accent) 0, var(--accent) 6px,
+    transparent 6px, transparent 11px);
+  opacity: .55;
+}
 
 /* --- Modulliste ----------------------------------------------------- */
 .mod-list { display: grid; gap: 10px; grid-template-columns: 1fr; }
-@media (min-width: 620px) { .mod-list { grid-template-columns: 1fr 1fr; } }
+@media (min-width: 620px) {
+  .mod-list { grid-template-columns: 1fr 1fr; }
+  /* Nur relevant, sobald es überhaupt zwei Spalten gibt - bei einer
+     Spalte (schmale Ansicht) nimmt die Karte ohnehin die volle Breite. */
+  .mod-item--wide { grid-column: 1 / -1; }
+}
 .mod-item {
+  min-width: 0;   /* dieselbe Regel wie bei Flexbox: Grid-Zellen schrumpfen
+                      per Vorgabe nicht unter die Inhaltsbreite (min-width:
+                      auto). Ein langer Wert in einer Kachel hätte sonst die
+                      ganze Seite über die Fensterbreite gedrückt. */
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 12px 14px;
   background: var(--panel-2);
+  transition: border-color .15s ease;
 }
 .mod-item .n { font-weight: 600; font-size: .95rem; }
 .mod-item .d { color: var(--muted); font-size: .85rem; margin-top: 2px; }
 .mod-item .row {
-  display: flex; justify-content: space-between; gap: 12px;
+  display: flex; justify-content: space-between;
+  flex-wrap: wrap;   /* passt Label und Wert nicht nebeneinander, bricht
+                         der Wert (samt Häkchen-Knopf) in eine eigene
+                         Zeile um, statt sich zu quetschen oder über den
+                         Kartenrand hinauszuragen */
+  gap: 4px 12px;
   font-size: .85rem; color: var(--muted);
   padding: 2px 0; border-bottom: 1px solid var(--line-soft);
 }
@@ -555,6 +641,10 @@ code {
 .chart-dot   { fill: var(--accent); }
 .chart-dot2  { fill: var(--muted); }
 .spark { width: 100px; height: 28px; display: block; }
+.daybars-wrap { width: 100%; }
+.daybars { width: 100%; height: 70px; display: block; }
+.daybars rect { transition: opacity .1s; }
+.daybars rect:hover { opacity: .75; }
 
 /* --- Vitalwerte ----------------------------------------------------- */
 .vital-grid { display: grid; gap: 10px; grid-template-columns: 1fr; }
@@ -564,16 +654,26 @@ code {
 .vital-card {
   display: block;
   border: 1px solid var(--line);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   padding: 12px 14px;
   background: var(--panel-2);
   text-decoration: none;
   color: var(--ink);
+  transition: border-color .15s ease, transform .15s ease, box-shadow .15s ease;
 }
-.vital-card:hover { border-color: var(--accent); }
+.vital-card:hover { border-color: var(--accent); transform: translateY(-2px); box-shadow: var(--shadow); }
 .vital-card .lbl { color: var(--muted); font-size: .85rem; }
-.vital-card .val { font-size: 1.5rem; font-weight: 600; margin-top: 2px; font-variant-numeric: tabular-nums; }
-.vital-card .val .u { font-size: .82rem; font-weight: 400; color: var(--muted); margin-left: 3px; }
+/* Monospace für die große Zahl: die eine bewusste Signatur bei den
+   Daten selbst - Messwerte lesen sich wie von einem Gerät abgelesen,
+   nicht wie Fließtext, ohne irgendwo eine zweite Schriftfamilie zu
+   laden. */
+.vital-card .val {
+  font-size: 1.5rem; font-weight: 600; margin-top: 2px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -.01em;
+}
+.vital-card .val .u { font-size: .82rem; font-weight: 400; color: var(--muted); margin-left: 3px; font-family: inherit; }
 .vital-card .meta { color: var(--muted); font-size: .8rem; margin-top: 2px; }
 .vital-card .foot-row { display: flex; align-items: flex-end; justify-content: space-between; gap: 8px; margin-top: 6px; }
 .vital-card.sev1 .val { color: var(--warn); }
@@ -583,20 +683,55 @@ code {
 .delta.down { color: var(--accent); }
 
 .field-row { display: flex; gap: 10px; }
-.field-row > div { flex: 1; }
+/* min-width: 0 ist nötig, sonst verweigert sich ein Flex-Kind dem
+   Schrumpfen unter seine Inhaltsbreite (Flexbox-Standard: min-width:auto
+   als Vorgabe). Ein <input type="date"> rendert auf iOS eigenwillig
+   breit – ohne diese Zeile drückt das seine Spalte über den fairen
+   Anteil hinaus und je nach Formular die ganze Seite über die
+   Fensterbreite. */
+.field-row > div { flex: 1; min-width: 0; }
 .hint { color: var(--muted); font-size: .82rem; margin-top: 4px; }
 
 #mainnav a.ext span { opacity: .55; font-size: .8em; }
 
-.mod-item { text-decoration: none; color: inherit; display: block; }
+.mod-item { display: block; }
 .mod-item.planned { opacity: .6; }
+
+/* Titel und einzelne Zeilen sind jetzt eigene Links, seit die Kachel
+   selbst kein <a> mehr sein kann (Formulare/Links lassen sich nicht in
+   ein <a> verschachteln). */
+.mod-item a.n, .mod-item a.k {
+  text-decoration: none; color: inherit;
+}
+.mod-item a.n:hover, .mod-item a.k:hover { color: var(--accent); }
+
+.icon-btn {
+  width: 26px; height: 26px; min-height: 0;
+  margin: 0; padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--accent);
+  font-size: .85rem;
+  line-height: 1;
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+  flex: none;
+  transition: background-color .12s ease, border-color .12s ease;
+}
+.icon-btn:hover { background: var(--accent-soft); border-color: var(--accent); }
+.icon-btn:disabled, button:disabled {
+  color: var(--muted);
+  border-color: var(--line);
+  background: var(--panel-2);
+  cursor: not-allowed;
+  opacity: .65;
+}
+.icon-btn:disabled:hover { background: var(--panel-2); border-color: var(--line); }
+button:disabled:hover, .btn:disabled:hover { box-shadow: none; transform: none; filter: none; }
 
 /* --- Marke ---------------------------------------------------------- */
 header.top .brand { display: inline-flex; align-items: center; gap: 9px; }
 header.top .brand img { display: block; flex: none; }
-@media (max-width: 400px) {
-  /* Auf schmalen Geräten zählt der Platz für die Schaltflächen mehr
-     als der ausgeschriebene Name – das Zeichen allein genügt. */
-  header.top .brand span { display: none; }
-}
+header.top .brand span { white-space: nowrap; }
 .logo { width: 100%; max-width: 280px; height: auto; display: block; }

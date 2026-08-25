@@ -4,7 +4,9 @@ require __DIR__ . '/_init.php';
 
 use Health\App;
 use Health\Csrf;
+use Health\VaccinationPlan;
 use Health\VaccinationsRepository as Vacc;
+use Health\Modules;
 use Health\View;
 
 $app = App::boot();
@@ -60,7 +62,7 @@ View::start($app, ['title' => 'Impfpass – ' . $app->config['app']['name'], 'ac
 <?php endif; ?>
 
 <div class="panel">
-  <h1>Impfpass</h1>
+  <h1><?= View::moduleDot(Modules::VACCINATION) ?>Impfpass</h1>
   <p class="sub"><?= count($list) ?> Einträge</p>
 
   <?php if (!$list): ?>
@@ -125,6 +127,13 @@ View::start($app, ['title' => 'Impfpass – ' . $app->config['app']['name'], 'ac
                value="<?= App::e($edit['next_due_date'] ?? '') ?>">
       </div>
     </div>
+    <p class="hint">
+      Leer lassen, um sie nach dem Impfplan Österreich automatisch
+      vorzuschlagen – sofern für den eingetragenen Impfstoff ein
+      Regelintervall bekannt ist (Übersicht unten). Wird nichts
+      gefunden oder sieht der Plan keine routinemäßige Auffrischung
+      vor, bleibt das Feld leer und lässt sich jederzeit nachtragen.
+    </p>
 
     <div class="field-row">
       <div>
@@ -159,5 +168,32 @@ View::start($app, ['title' => 'Impfpass – ' . $app->config['app']['name'], 'ac
     </form>
   </div>
   <?php endif; ?>
+</div>
+
+<div class="panel">
+  <h2>Impfplan Österreich – Regelintervalle</h2>
+  <p class="sub">
+    Orientierung für die Auffrischungs-Vorschläge oben. Ersetzt keine
+    ärztliche Beratung – bei Grunderkrankungen, Immunsuppression,
+    Reisemedizin oder anderen Sonderindikationen weicht das
+    tatsächliche Intervall oft ab.
+  </p>
+  <div class="table-wrap">
+    <table class="stack">
+      <thead><tr><th>Impfstoff</th><th>Intervall</th></tr></thead>
+      <tbody>
+        <?php foreach (VaccinationPlan::overview() as $rule): ?>
+          <tr>
+            <td data-label="Impfstoff"><?= App::e($rule['label']) ?></td>
+            <td data-label="Intervall"><?= App::e($rule['note']) ?></td>
+          </tr>
+        <?php endforeach; ?>
+      </tbody>
+    </table>
+  </div>
+  <p class="foot" style="text-align:left;margin-top:10px">
+    Quelle: <a href="<?= App::e(VaccinationPlan::SOURCE_URL) ?>" target="_blank" rel="noopener noreferrer">
+      <?= App::e(VaccinationPlan::SOURCE_LABEL) ?> ↗</a>
+  </p>
 </div>
 <?php View::end($app); ?>

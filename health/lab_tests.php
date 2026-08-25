@@ -52,7 +52,7 @@ View::start($app, ['title' => 'Labortests – ' . $app->config['app']['name'], '
 <?php View::flash($ok, 'ok'); View::flash($error, 'error'); ?>
 
 <div class="panel">
-  <h1>Labortests</h1>
+  <h1>Laborparameter</h1>
   <p class="sub"><a href="<?= App::url('/lab.php') ?>">zur Übersicht</a>
      · <a href="<?= App::url('/lab_cumulative.php') ?>">Kumulativbefund</a></p>
 
@@ -60,7 +60,7 @@ View::start($app, ['title' => 'Labortests – ' . $app->config['app']['name'], '
     <h2 style="margin-top:16px"><?= App::e($cat ?: 'Sonstiges') ?></h2>
     <div class="table-wrap">
       <table class="stack">
-        <thead><tr><th>Test</th><th>Referenz</th><th>Sichtbar</th><th></th></tr></thead>
+        <thead><tr><th>Laborparameter</th><th>Referenz</th><th>Sichtbar</th><th></th></tr></thead>
         <tbody>
         <?php foreach ($list as $t): ?>
           <tr>
@@ -93,7 +93,7 @@ View::start($app, ['title' => 'Labortests – ' . $app->config['app']['name'], '
     </div>
   <?php endforeach; ?>
   <p class="hint">
-    Mitgelieferte Tests lassen sich ausblenden, aber inhaltlich nicht ändern.
+    Mitgelieferte Laborparameter lassen sich ausblenden, aber inhaltlich nicht ändern.
     Werte bereits erfasster Befundtermine bleiben davon unberührt.
   </p>
 </div>
@@ -161,7 +161,7 @@ View::start($app, ['title' => 'Labortests – ' . $app->config['app']['name'], '
 <?php endif; ?>
 
 <div class="panel">
-  <h2>Neuen Test anlegen</h2>
+  <h2>Neuen Laborparameter anlegen</h2>
   <form method="post">
     <?= Csrf::field() ?>
     <input type="hidden" name="action" value="new">

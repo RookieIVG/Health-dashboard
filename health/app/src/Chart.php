@@ -121,24 +121,67 @@ final class Chart
     }
 
     /** Kleine Verlaufslinie ohne Achsen, für Übersichtskacheln. */
-    public static function spark(array $values, int $w = 120, int $h = 28): string
+    /**
+     * Kompakte gestapelte Balken-Zeitleiste über N Tage – für die
+     * Timeline-Kachel auf der Übersichtsseite. Je Tag ein Balken,
+     * gestapelt aus einem Segment pro Modul mit Einträgen an dem Tag,
+     * Segmenthöhe = Anzahl Einträge dieses Moduls, Farbe = feste
+     * Modulfarbe (Modules::color()).
+     *
+     * @param array $days [['date'=>'YYYY-MM-DD', 'byModule'=>['medication'=>2, …]], …] älteste zuerst
+     */
+    public static function dayBars(array $days, int $w = 700, int $h = 90): string
     {
-        $values = array_values(array_map('floatval', $values));
-        if (count($values) < 2) return '';
+        $n = count($days);
+        if ($n < 1) return '<p class="empty">Keine Ereignisse in diesem Zeitraum.</p>';
 
-        $min = min($values); $max = max($values);
-        if ($max - $min < 0.0001) { $min -= 1; $max += 1; }
+        $padB = 16; // Platz für die Wochentags-Beschriftung unten
+        $barAreaH = $h - $padB;
 
-        $n = count($values);
-        $d = '';
-        foreach ($values as $i => $v) {
-            $x = ($w - 2) * $i / ($n - 1) + 1;
-            $y = 2 + ($h - 4) * (1 - (($v - $min) / ($max - $min)));
-            $d .= ($i === 0 ? 'M' : 'L') . sprintf('%.1f %.1f ', $x, $y);
+        $totals = array_map(fn($d) => array_sum($d['byModule']), $days);
+        $maxTotal = max(1, max($totals));
+
+        $gap = 3;
+        $barW = ($w - $gap * ($n - 1)) / $n;
+        $wdInitials = ['Mo','Di','Mi','Do','Fr','Sa','So'];
+
+        $bars = '';
+        foreach ($days as $i => $d) {
+            $x = $i * ($barW + $gap);
+            $total = array_sum($d['byModule']);
+
+            if ($total > 0) {
+                $totalH = max(4, $barAreaH * $total / $maxTotal);
+                $yCursor = $barAreaH; // von unten nach oben stapeln
+                foreach ($d['byModule'] as $module => $count) {
+                    if ($count <= 0) continue;
+                    $segH = $totalH * $count / $total;
+                    $yCursor -= $segH;
+                    $title = App::e($d['date'] . ': ' . Modules::label($module) . ' (' . $count . ')');
+                    $bars .= sprintf(
+                        '<rect x="%.1f" y="%.1f" width="%.1f" height="%.1f" fill="%s"><title>%s</title></rect>',
+                        $x, $yCursor, $barW, $segH + 0.5, Modules::color($module), $title
+                    );
+                }
+            } else {
+                // leerer Tag: dünner grauer Strich statt unsichtbar
+                $bars .= sprintf(
+                    '<rect x="%.1f" y="%.1f" width="%.1f" height="1.5" fill="var(--line)"/>',
+                    $x, $barAreaH - 1.5, $barW
+                );
+            }
+
+            if ($i % 2 === 0 || $n <= 7) {
+                $wd = $wdInitials[(int)date('N', strtotime($d['date'])) - 1];
+                $bars .= sprintf(
+                    '<text x="%.1f" y="%d" font-size="8" fill="var(--muted)" text-anchor="middle">%s</text>',
+                    $x + $barW / 2, $h - 3, App::e($wd)
+                );
+            }
         }
 
-        return '<svg viewBox="0 0 ' . $w . ' ' . $h . '" class="spark" '
-             . 'xmlns="http://www.w3.org/2000/svg" aria-hidden="true">'
-             . '<path d="' . trim($d) . '" fill="none" class="chart-line"/></svg>';
+        return '<svg viewBox="0 0 ' . $w . ' ' . $h . '" class="daybars" preserveAspectRatio="none" '
+             . 'xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Ereignisse der letzten ' . $n . ' Tage">'
+             . $bars . '</svg>';
     }
 }

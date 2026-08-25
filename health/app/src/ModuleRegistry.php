@@ -37,6 +37,7 @@ final class ModuleRegistry
         'allergies'  => ['label' => 'Allergien', 'url' => '/allergies.php', 'nav' => true, 'card' => true, 'ready' => true],
         'activity'   => ['label' => 'Aktivität', 'url' => null, 'nav' => false, 'card' => true, 'ready' => false],
         'costs'      => ['label' => 'Kosten', 'url' => '/costs.php', 'nav' => true, 'card' => true, 'ready' => true],
+        'contacts'   => ['label' => 'Kontakte', 'url' => '/contacts.php', 'nav' => true, 'card' => true, 'ready' => true],
     ];
 
     /** Feste Punkte außerhalb der Sortierung. */
@@ -135,7 +136,7 @@ final class ModuleRegistry
     // Ausgabe
     // =================================================================
 
-    /** Navigationspunkte in persönlicher Reihenfolge. */
+    /** Navigationspunkte in persönlicher Reihenfolge – dieselbe wie auf der Startseite. */
     public function navItems(): array
     {
         $p    = $this->prefs();
@@ -154,7 +155,30 @@ final class ModuleRegistry
     }
 
     /** Kacheln für die Startseite, samt Zusammenfassung. */
-    public function cards(): array
+    /**
+     * DEFS-Schlüssel (Seiten-/Navigationsslug, oft Mehrzahl, z.B.
+     * "findings") sind nicht immer identisch mit den Modules::-
+     * Schlüsseln (Datenbank-/Timeline-Modulname, Einzahl, z.B.
+     * "finding"). Für alles, was hier fehlt, sind beide Schreibweisen
+     * gleich.
+     */
+    private const DEF_TO_MODULE = [
+        'diagnoses'    => Modules::DIAGNOSIS,
+        'findings'     => Modules::FINDING,
+        'appointments' => Modules::APPOINTMENT,
+        'vaccinations' => Modules::VACCINATION,
+        'allergies'    => Modules::ALLERGY,
+        'costs'        => Modules::COST,
+        'contacts'     => Modules::CONTACT,
+    ];
+
+    public static function colorForDefKey(string $defKey): ?string
+    {
+        $moduleKey = self::DEF_TO_MODULE[$defKey] ?? (Modules::isValid($defKey) ? $defKey : null);
+        return $moduleKey ? Modules::color($moduleKey) : null;
+    }
+
+    public function cards(int $timelineDays = 14): array
     {
         $p   = $this->prefs();
         $out = [];
@@ -163,13 +187,23 @@ final class ModuleRegistry
             $d = self::DEFS[$key];
             if (empty($d['card']) || in_array($key, $p['hidden'], true)) continue;
 
-            $out[] = [
+            $row = [
                 'key'     => $key,
                 'label'   => $d['label'],
                 'url'     => $d['ready'] ? $d['url'] : null,
                 'ready'   => (bool)$d['ready'],
-                'summary' => $d['ready'] ? $this->summary($key) : [['l' => 'geplant', 'v' => '']],
+                'color'   => self::colorForDefKey($key),
+                // Die Timeline-Kachel bekommt eine grafische Auswertung
+                // statt der Zählliste - die generische summary() dafür
+                // aufzurufen wäre nur unnötig verschwendete Arbeit.
+                'summary' => $d['ready'] ? ($key === 'timeline' ? [] : $this->summary($key))
+                                         : [['l' => 'geplant', 'v' => '']],
             ];
+            if ($key === 'timeline' && $d['ready']) {
+                $row['chart'] = $this->timelineChart(max(0, $timelineDays - 1));
+                $row['timelineDays'] = $timelineDays;
+            }
+            $out[] = $row;
         }
         return $out;
     }
@@ -200,6 +234,7 @@ final class ModuleRegistry
                 'lab'        => $this->labSummary(),
                 'vaccinations' => $this->vaccinationsSummary(),
                 'costs'      => $this->costsSummary(),
+                'contacts'   => $this->contactsSummary(),
                 'medication' => $this->medicationSummary(),
                 default     => [],
             };
@@ -220,8 +255,9 @@ final class ModuleRegistry
         foreach ($repo->types() as $t) {
             $c = $counts[(int)$t['id']] ?? null;
             $out[] = [
-                'l' => $t['label'],
-                'v' => $c ? $this->app->local($c['last'], 'd.m.Y') : '–',
+                'l'   => $t['label'],
+                'v'   => $c ? $this->app->local($c['last'], 'd.m.Y') : '–',
+                'url' => '/diary_type.php?type=' . (int)$t['id'],
             ];
         }
         return $out ?: [['l' => 'Noch kein Tagebuch', 'v' => '']];
@@ -238,7 +274,7 @@ final class ModuleRegistry
         foreach (array_slice($open, 0, 10) as $d) {
             $out[] = [
                 'l' => (string)$d['title'],
-                'v' => DiagnosesRepository::STATUS[$d['status']] ?? '',
+                'v' => $d['onset_date'] ? 'seit ' . date('d.m.Y', strtotime($d['onset_date'])) : '',
             ];
         }
         if (count($open) > 10) {
@@ -307,11 +343,16 @@ final class ModuleRegistry
         $next = $repo->upcoming(5);
         if (!$next) return [['l' => 'Kein Termin geplant', 'v' => '']];
 
+        $soon = new \DateTimeImmutable('+3 days');
+
         $out = [];
         foreach ($next as $a) {
+            $starts = new \DateTimeImmutable($a['starts_at'] . ' UTC');
             $out[] = [
                 'l' => (string)$a['title'],
                 'v' => $this->app->local($a['starts_at'], 'd.m.Y'),
+                'url' => '/appointment.php?id=' . (int)$a['id'],
+                'severity' => $starts <= $soon ? 2 : 0,
             ];
         }
         return $out;
@@ -347,18 +388,34 @@ final class ModuleRegistry
         return $out;
     }
 
+    /** Nur die letzte Impfung je Impfstoff, mit Auffrischungsdatum. */
     private function vaccinationsSummary(): array
     {
-        $repo = new VaccinationsRepository($this->app);
-        $due  = $repo->dueSoon();
-        $list = $repo->listAll();
-        if (!$list) return [['l' => 'Noch keine Impfungen', 'v' => '']];
+        $repo   = new VaccinationsRepository($this->app);
+        $latest = $repo->byVaccine();
+        if (!$latest) return [['l' => 'Noch keine Impfungen', 'v' => '']];
+
+        usort($latest, fn($a, $b) => $b['given_date'] <=> $a['given_date']);
+        $today    = date('Y-m-d');
+        $soonDate = date('Y-m-d', strtotime('+30 days'));
 
         $out = [];
-        foreach (array_slice($list, 0, 3) as $v) {
-            $out[] = ['l' => (string)$v['vaccine'], 'v' => date('d.m.Y', strtotime($v['given_date']))];
+        foreach (array_slice($latest, 0, 8) as $v) {
+            $value = 'zuletzt ' . date('d.m.Y', strtotime($v['given_date']));
+            $sev = 0;
+            if ($v['next_due_date']) {
+                $overdue = $v['next_due_date'] < $today;
+                // Auch ohne bereits verstrichenen Termin rot markieren,
+                // wenn die Auffrischung innerhalb der nächsten 30 Tage
+                // ansteht – nicht erst, wenn sie schon überfällig ist.
+                $dueSoon = !$overdue && $v['next_due_date'] <= $soonDate;
+                $value .= ' · ' . ($overdue ? 'überfällig seit ' : 'Auffrischung ')
+                        . date('d.m.Y', strtotime($v['next_due_date']));
+                $sev = ($overdue || $dueSoon) ? 2 : 0;
+            }
+            $out[] = ['l' => (string)$v['vaccine'], 'v' => $value, 'severity' => $sev];
         }
-        if ($due) $out[] = ['l' => count($due) . ' Auffrischung(en) fällig', 'v' => ''];
+        if (count($latest) > 8) $out[] = ['l' => 'und ' . (count($latest) - 8) . ' weitere', 'v' => ''];
         return $out;
     }
 
@@ -375,17 +432,74 @@ final class ModuleRegistry
         ];
     }
 
+    private function contactsSummary(): array
+    {
+        $repo = new ContactsRepository($this->app);
+        $list = $repo->listAll(true);
+        if (!$list) return [['l' => 'Noch kein Kontakt', 'v' => '']];
+
+        $out = [];
+        foreach (array_slice($list, 0, 8) as $c) {
+            $out[] = [
+                'l' => (string)$c['name'],
+                'v' => ContactsRepository::KINDS[$c['kind']] ?? '',
+                'url' => '/contacts.php?edit=' . (int)$c['id'],
+            ];
+        }
+        if (count($list) > 8) $out[] = ['l' => 'und ' . (count($list) - 8) . ' weitere', 'v' => ''];
+        return $out;
+    }
+
+    /**
+     * Statt eines reinen Status zeigt jede Zeile die nächste Fälligkeit
+     * (rot, wenn überfällig) und – bei planbasierten, aktiven
+     * Präparaten – ein Häkchen-Symbol zum direkten Abzeichnen, ohne
+     * erst die Medikationsseite öffnen zu müssen.
+     */
     private function medicationSummary(): array
     {
         $repo = new MedicationRepository($this->app);
         $list = $repo->listAll(false);
         if (!$list) return [['l' => 'Keine laufende Medikation', 'v' => '']];
 
+        $now = new \DateTimeImmutable('now', new \DateTimeZone($this->app->config['app']['timezone']));
+
         $out = [];
         foreach (array_slice($list, 0, 8) as $m) {
+            $label = $m['name'] . ($m['strength'] ? ' ' . $m['strength'] : '');
+
+            $url = '/medication.php?id=' . (int)$m['id'];
+
+            if ($m['is_prn']) {
+                $out[] = ['l' => $label, 'v' => 'bei Bedarf', 'url' => $url];
+                continue;
+            }
+            if ($m['status'] !== 'active') {
+                $out[] = ['l' => $label, 'v' => MedicationRepository::STATUS[$m['status']], 'url' => $url];
+                continue;
+            }
+
+            $due = $repo->nextDueForMedication((int)$m['id']);
+            if (!$due) {
+                $out[] = ['l' => $label, 'v' => 'kein Plan hinterlegt', 'url' => $url];
+                continue;
+            }
+
+            $overdue = $due['at'] < $now;
+            $sameDay = $due['at']->format('Y-m-d') === $now->format('Y-m-d');
+            $value = ($overdue ? 'überfällig seit ' : 'nächste Gabe ')
+                   . $due['intake_time'] . ' Uhr'
+                   . ' ' . ($sameDay ? 'heute' : $due['at']->format('d.m.Y'));
+
             $out[] = [
-                'l' => $m['name'] . ($m['strength'] ? ' ' . $m['strength'] : ''),
-                'v' => $m['is_prn'] ? 'bei Bedarf' : MedicationRepository::STATUS[$m['status']],
+                'l' => $label, 'v' => $value, 'url' => $url, 'severity' => $overdue ? 2 : 0,
+                // 'active' steuert, ob der Haken auf der Startseite anklickbar
+                // ist. Ist die nächste Gabe nicht heute, würde ein Klick
+                // trotzdem mit dem heutigen Zeitstempel buchen – dann lieber
+                // ausgegraut zeigen, statt eine falsch datierte Einnahme zu
+                // riskieren.
+                'action' => ['type' => 'take', 'medication_id' => (int)$m['id'],
+                             'schedule_id' => $due['schedule_id'], 'active' => $sameDay],
             ];
         }
         if (count($list) > 8) $out[] = ['l' => 'und ' . (count($list) - 8) . ' weitere', 'v' => ''];
@@ -393,8 +507,19 @@ final class ModuleRegistry
         $ending = $repo->endingSoon(14);
         if ($ending) $out[] = ['l' => count($ending) . ' bald zu Ende', 'v' => ''];
 
-        $low = $repo->lowStock();
-        if ($low) $out[] = ['l' => count($low) . ' Bestand niedrig', 'v' => ''];
+        // Eigene Zeile je Präparat mit niedrigem Bestand, wie im
+        // Warnbanner auf medications.php – nicht nur eine Zahl, damit auf
+        // der Übersicht sofort erkennbar ist, was betroffen ist.
+        foreach ($repo->lowStock() as $low) {
+            $qty = $low['stock_quantity'] !== null
+                 ? rtrim(rtrim(number_format((float)$low['stock_quantity'], 1, ',', '.'), '0'), ',') : '0';
+            $out[] = [
+                'l' => $low['name'] . ($low['strength'] ? ' ' . $low['strength'] : ''),
+                'v' => 'noch ' . $qty . ' ' . $low['stock_unit'],
+                'url' => '/medication.php?id=' . (int)$low['id'],
+                'severity' => 2,
+            ];
+        }
         return $out;
     }
 
@@ -408,5 +533,54 @@ final class ModuleRegistry
             $out[] = ['l' => Modules::label($mod), 'v' => (string)$n];
         }
         return $out;
+    }
+
+    /**
+     * Gestapelte Balken je Tag über die letzten 14 Tage, ein Segment
+     * pro Modul mit Einträgen an dem Tag. Ergänzt (ersetzt nicht) die
+     * reine Zählliste, die es weiterhin auf der vollen Timeline-Seite
+     * selbst gibt.
+     */
+    private function timelineChart(int $daysBack = 13): array
+    {
+        $tz    = new \DateTimeZone($this->app->config['app']['timezone']);
+        $today = new \DateTimeImmutable('now', $tz);
+
+        $fromUtc = $today->modify("-{$daysBack} days")->setTime(0, 0, 0)
+                         ->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+        $toUtc   = $today->setTime(23, 59, 59)
+                         ->setTimezone(new \DateTimeZone('UTC'))->format('Y-m-d H:i:s');
+
+        $events = $this->app->timeline()->range($fromUtc, $toUtc, null, 500);
+        $byDay  = $this->app->timeline()->groupedByDay($events);
+
+        $days = [];
+        $usedModules = [];
+        for ($i = $daysBack; $i >= 0; $i--) {
+            $date      = $today->modify("-{$i} days")->format('Y-m-d');
+            $dayEvents = $byDay[$date] ?? [];
+
+            $byModule = [];
+            foreach ($dayEvents as $e) {
+                $byModule[$e['module']] = ($byModule[$e['module']] ?? 0) + 1;
+                $usedModules[$e['module']] = true;
+            }
+            $days[] = ['date' => $date, 'byModule' => $byModule];
+        }
+
+        $total = count($events);
+        $legend = [];
+        foreach (array_keys($usedModules) as $m) {
+            $legend[] = ['label' => Modules::label($m), 'color' => Modules::color($m)];
+        }
+        usort($legend, fn($a, $b) => $a['label'] <=> $b['label']);
+
+        return [
+            'svg'     => Chart::dayBars($days),
+            'legend'  => $legend,
+            'caption' => $total > 0
+                ? $total . ' Ereignis' . ($total === 1 ? '' : 'se') . ' in den letzten ' . ($daysBack + 1) . ' Tagen'
+                : 'Keine Ereignisse in den letzten ' . ($daysBack + 1) . ' Tagen',
+        ];
     }
 }

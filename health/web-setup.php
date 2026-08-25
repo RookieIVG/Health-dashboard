@@ -114,7 +114,7 @@ if ($step === 'check' && $app) {
             'SELECT COUNT(*) FROM information_schema.tables
              WHERE table_schema = DATABASE() AND table_name = "users"'
         ) === 1;
-        $add('Schema eingespielt', $hasUsers, $hasUsers ? '' : 'db/01_core_schema.sql fehlt noch');
+        $add('Schema eingespielt', $hasUsers, $hasUsers ? '' : 'db/schema.sql fehlt noch');
     } catch (\Throwable $e) {
         $add('Datenbankverbindung', false, $e->getMessage());
     }

@@ -5,6 +5,7 @@ require __DIR__ . '/_init.php';
 use Health\App;
 use Health\Csrf;
 use Health\MedicationRepository as Med;
+use Health\Modules;
 use Health\View;
 
 $app = App::boot();
@@ -22,13 +23,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 header('Location: ' . App::url('/medication.php?id=' . $id));
                 exit;
             case 'take':
-                $now = (new DateTimeImmutable('now', new DateTimeZone($app->config['app']['timezone'])))->format('Y-m-d\TH:i');
-                $repo->logIntake(
-                    (int)($_POST['medication_id'] ?? 0),
-                    (int)($_POST['schedule_id'] ?? 0) ?: null,
-                    $now, null
-                );
-                $ok = 'Abgezeichnet.';
+                $medId = (int)($_POST['medication_id'] ?? 0);
+                $schedId = (int)($_POST['schedule_id'] ?? 0) ?: null;
+                $now = (new DateTimeImmutable('now', new DateTimeZone($app->config['app']['timezone'])));
+                if ($schedId !== null && $repo->takenOn($schedId, $now)) {
+                    // Zweiter Klick auf denselben Knopf (Doppelklick, zwei
+                    // Tabs) darf keine zweite Einnahme protokollieren.
+                    $ok = 'Für heute bereits abgezeichnet.';
+                } else {
+                    $repo->logIntake($medId, $schedId, $now->format('Y-m-d\TH:i'), null);
+                    $ok = 'Abgezeichnet.';
+                }
                 break;
         }
     } catch (\Throwable $e) {
@@ -85,7 +90,7 @@ View::start($app, ['title' => 'Medikation – ' . $app->config['app']['name'], '
 <?php endif; ?>
 
 <div class="panel">
-  <h1>Medikation</h1>
+  <h1><?= View::moduleDot(Modules::MEDICATION) ?>Medikation</h1>
   <p class="sub">
     <?= count($list) ?> Einträge
     · <a href="<?= App::url('/medications.php' . ($showStopped ? '' : '?all=1')) ?>">
@@ -97,7 +102,8 @@ View::start($app, ['title' => 'Medikation – ' . $app->config['app']['name'], '
   <?php else: ?>
     <?php foreach ($list as $m):
           $due = $nextDue[(int)$m['id']] ?? null;
-          $overdue = $due && $due['at'] < $now; ?>
+          $overdue = $due && $due['at'] < $now;
+          $isToday = $due && $due['at']->format('Y-m-d') === $now->format('Y-m-d'); ?>
       <div class="ev<?= $overdue ? ' sev3' : '' ?>">
         <div class="body">
           <div class="title">
@@ -113,8 +119,8 @@ View::start($app, ['title' => 'Medikation – ' . $app->config['app']['name'], '
             <?php if ($due): ?>
               <span style="<?= $overdue ? 'color:var(--danger);font-weight:600' : '' ?>">
                 <?= $overdue ? 'überfällig seit ' : 'nächste Einnahme ' ?>
-                <?= App::e(Med::PERIODS[$due['period']]) ?>
-                <?= $due['at']->format('d.m.') === $now->format('d.m.') ? 'heute' : $due['at']->format('d.m.Y') ?>
+                <?= App::e($due['intake_time']) ?> Uhr,
+                <?= $isToday ? 'heute' : $due['at']->format('d.m.Y') ?>
               </span>
               · <?= App::e($due['dose']) ?>
             <?php elseif ($m['status'] === 'active' && !$m['is_prn']): ?>
@@ -130,13 +136,20 @@ View::start($app, ['title' => 'Medikation – ' . $app->config['app']['name'], '
         </div>
         <?php if ($due): ?>
           <div class="t" style="width:auto">
-            <form method="post" style="margin:0">
-              <?= Csrf::field() ?>
-              <input type="hidden" name="action" value="take">
-              <input type="hidden" name="medication_id" value="<?= (int)$m['id'] ?>">
-              <input type="hidden" name="schedule_id" value="<?= (int)$due['schedule_id'] ?>">
-              <button type="submit" class="secondary small">Abzeichnen</button>
-            </form>
+            <?php if ($isToday): ?>
+              <form method="post" style="margin:0">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="action" value="take">
+                <input type="hidden" name="medication_id" value="<?= (int)$m['id'] ?>">
+                <input type="hidden" name="schedule_id" value="<?= (int)$due['schedule_id'] ?>">
+                <button type="submit" class="secondary small">Abzeichnen</button>
+              </form>
+            <?php else: ?>
+              <button type="button" class="secondary small" disabled
+                      title="Erst am Fälligkeitstag abzeichenbar – für heute ist nichts offen.">
+                Abzeichnen
+              </button>
+            <?php endif; ?>
           </div>
         <?php endif; ?>
       </div>

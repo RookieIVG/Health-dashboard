@@ -45,6 +45,22 @@ final class DiaryRepository extends Repository
         );
     }
 
+    /**
+     * Infotext gilt bewusst auch für mitgelieferte Tagebücher als
+     * änderbar, anders als deren Felder/Struktur: eine Nutzungshinweis-
+     * Anpassung berührt nicht die Auswertbarkeit über mehrere Konten
+     * hinweg, anders als eine geänderte Skala es täte.
+     */
+    public function setInfoText(int $typeId, ?string $text): void
+    {
+        if (!$this->type($typeId)) throw new InvalidArgumentException('Tagebuch nicht gefunden.');
+        $text = $text !== null ? trim($text) : null;
+        $this->db->run(
+            'UPDATE diary_types SET info_text = :t WHERE id = :id',
+            [':t' => ($text === '' ? null : $text), ':id' => $typeId]
+        );
+    }
+
     public function typeByKey(string $key): ?array
     {
         return $this->db->one(
@@ -150,7 +166,7 @@ final class DiaryRepository extends Repository
      * @param array $values  fkey => Rohwert aus dem Formular
      */
     public function saveEntry(int $typeId, string $occurredLocal, array $values,
-                              ?string $note = null, ?int $entryId = null): int
+                              ?string $note = null, ?int $entryId = null, ?string $tagsRaw = null): int
     {
         $type = $this->type($typeId);
         if (!$type) throw new InvalidArgumentException('Unbekanntes Tagebuch.');
@@ -174,7 +190,7 @@ final class DiaryRepository extends Repository
             $prepared[] = [$f, $this->normalizeValue($f, $raw)];
         }
 
-        return $this->db->transaction(function () use ($typeId, $utc, $note, $entryId, $prepared, $type): int {
+        $id = $this->db->transaction(function () use ($typeId, $utc, $note, $entryId, $prepared, $type): int {
             if ($entryId === null) {
                 $id = $this->create(['type_id' => $typeId, 'occurred_at' => $utc, 'note' => $note]);
             } else {
@@ -218,6 +234,22 @@ final class DiaryRepository extends Repository
 
             return $id;
         });
+
+        // Bewusst AUSSERHALB der Transaktion oben: sync() startet selbst
+        // eine eigene db->transaction() - von innen aufgerufen, würde das
+        // eine verschachtelte Transaktion auslösen (PDO unterstützt das
+        // nicht, würde mit "there is already an active transaction" abbrechen).
+        if ($tagsRaw !== null) {
+            $this->app->tags()->sync($this->module(), $id, self::parseTags($tagsRaw), $this->ownerId);
+        }
+
+        return $id;
+    }
+
+    public static function parseTags(string $raw): array
+    {
+        $parts = preg_split('/[,;]+/u', $raw) ?: [];
+        return array_values(array_filter(array_map('trim', $parts), fn($t) => $t !== ''));
     }
 
     /** Wandelt einen Formularwert in die passende Spalte. */
@@ -307,7 +339,250 @@ final class DiaryRepository extends Repository
         $rows = $this->hydrateAll($this->db->all($sql, $par));
         if (!$rows) return [];
 
-        return $this->attachValues($rows, $this->fields($typeId));
+        $rows = $this->attachValues($rows, $this->fields($typeId));
+        $this->attachTags($rows);
+        return $rows;
+    }
+
+    /** Tags für mehrere Einträge in einer Abfrage statt N+1 pro Zeile. */
+    private function attachTags(array &$rows): void
+    {
+        $ids = array_map(fn($r) => (int)$r['id'], $rows);
+        $byEntry = $this->tagsByEntryIds($ids);
+        foreach ($rows as &$r) {
+            $r['tags'] = $byEntry[(int)$r['id']] ?? [];
+        }
+    }
+
+    /** @return array<int, array{id:int, name:string}[]> Eintrags-ID => Tags */
+    private function tagsByEntryIds(array $ids): array
+    {
+        if (!$ids) return [];
+        $in = implode(',', array_fill(0, count($ids), '?'));
+        $tagRows = $this->db->all(
+            "SELECT tg.ref_id, t.id AS tag_id, t.name_enc
+             FROM taggables tg JOIN tags t ON t.id = tg.tag_id
+             WHERE tg.module = ? AND t.user_id = ? AND tg.ref_id IN ({$in})",
+            array_merge([$this->module(), $this->ownerId], $ids)
+        );
+
+        $dek = $this->dek();
+        $decrypted = []; // tag_id => Name, je Tag nur einmal entschlüsseln
+        $byEntry = [];
+        foreach ($tagRows as $tr) {
+            $tagId = (int)$tr['tag_id'];
+            if (!isset($decrypted[$tagId])) {
+                $decrypted[$tagId] = $this->crypto->dec($dek, $tr['name_enc'], 'tag.name');
+            }
+            $byEntry[(int)$tr['ref_id']][] = ['id' => $tagId, 'name' => $decrypted[$tagId]];
+        }
+        return $byEntry;
+    }
+
+    // =================================================================
+    // Mustererkennung: Auslöser-Tagebuch (z.B. Ernährung) gegen
+    // Wirkung-Tagebuch (z.B. Stuhl, Schmerz)
+    // =================================================================
+
+    /** Nur Felder, deren Wert sich sinnvoll mitteln lässt. */
+    private function isAnalyzableField(array $f): bool
+    {
+        if (in_array($f['ftype'], ['scale', 'number', 'bool'], true)) return true;
+        if ($f['ftype'] === 'choice' && $f['options_list']) {
+            foreach ($f['options_list'] as $opt) {
+                if (!is_numeric($opt['k'] ?? null)) return false;
+            }
+            return true;
+        }
+        return false;
+    }
+
+    /**
+     * Vergleicht Einträge eines Auslöser-Tagebuchs mit dem, was in einem
+     * Wirkung-Tagebuch im gewählten Zeitfenster DANACH passiert ist.
+     *
+     * Zwei Sichten, beide ohne Signifikanztests oder p-Werte – bei den
+     * üblichen Mengen an Tagebucheinträgen wäre das eine falsche
+     * Genauigkeit. Nur Mittelwerte und Fallzahlen, mit deutlichem
+     * Hinweis bei wenigen Einträgen. Mustererkennung für den Alltag,
+     * keine Diagnose.
+     *
+     *  - "buckets": nach dem Leitwert des Auslöser-Tagebuchs gruppiert
+     *    (z.B. niedrige/mittlere/hohe Verträglichkeit) – funktioniert
+     *    ohne jede Zusatzeingabe, mit dem, was ohnehin erfasst wird.
+     *  - "tags": nach den Stichworten/Zutaten gruppiert, die an den
+     *    Auslöser-Einträgen hängen – feiner, aber nur für getaggte
+     *    Einträge aussagekräftig.
+     */
+    public function analyzeCorrelation(int $sourceTypeId, int $outcomeTypeId, int $windowHours, int $minOccurrences): array
+    {
+        $primaryField  = $this->primaryField($sourceTypeId);
+        $outcomeFields = array_values(array_filter(
+            $this->fields($outcomeTypeId, true),
+            fn($f) => $this->isAnalyzableField($f)
+        ));
+
+        $sourceRows = $this->db->all(
+            'SELECT e.id, e.occurred_at, v.value_num, v.value_key
+             FROM diary_entries e
+             LEFT JOIN diary_values v ON v.entry_id = e.id AND v.field_id = :pf
+             WHERE e.user_id = :u AND e.type_id = :t
+             ORDER BY e.occurred_at',
+            [':u' => $this->ownerId, ':t' => $sourceTypeId, ':pf' => (int)($primaryField['id'] ?? 0)]
+        );
+
+        $sourceTags = $this->tagsByEntryIds(array_map(fn($r) => (int)$r['id'], $sourceRows));
+
+        $outcomeFieldIds = array_column($outcomeFields, 'id');
+        $outcomeRows = [];
+        if ($outcomeFieldIds) {
+            $in  = implode(',', array_fill(0, count($outcomeFieldIds), '?'));
+            $raw = $this->db->all(
+                "SELECT e.id AS entry_id, e.occurred_at, v.field_id, v.value_num, v.value_key
+                 FROM diary_entries e
+                 JOIN diary_values v ON v.entry_id = e.id
+                 WHERE e.user_id = ? AND e.type_id = ? AND v.field_id IN ({$in})
+                 ORDER BY e.occurred_at",
+                array_merge([$this->ownerId, $outcomeTypeId], array_map('intval', $outcomeFieldIds))
+            );
+            foreach ($raw as $r) {
+                $val = $r['value_num'] !== null ? (float)$r['value_num']
+                     : ($r['value_key'] !== null ? (float)$r['value_key'] : null);
+                if ($val === null) continue;
+                $outcomeRows[] = [
+                    'entry_id' => (int)$r['entry_id'], 'ts' => strtotime($r['occurred_at'] . ' UTC'),
+                    'field_id' => (int)$r['field_id'], 'value' => $val,
+                ];
+            }
+        }
+
+        $windowSeconds = $windowHours * 3600;
+
+        // Schlimmster Wert je Feld innerhalb des Fensters NACH dem
+        // Auslöser-Eintrag - nicht der Durchschnitt über das ganze
+        // Fenster, sonst verwässert eine ruhige Phase im selben Fenster
+        // einen tatsächlichen Ausschlag.
+        $responseFor = function (int $sourceEntryId, string $occurredAtUtc) use ($outcomeRows, $windowSeconds): array {
+            $startTs = strtotime($occurredAtUtc . ' UTC');
+            $endTs   = $startTs + $windowSeconds;
+            $best = [];
+            foreach ($outcomeRows as $or) {
+                if ($or['entry_id'] === $sourceEntryId) continue; // nur bei gleichem Tagebuch als Quelle+Ziel relevant
+                if ($or['ts'] < $startTs || $or['ts'] > $endTs) continue;
+                if (!isset($best[$or['field_id']]) || $or['value'] > $best[$or['field_id']]) {
+                    $best[$or['field_id']] = $or['value'];
+                }
+            }
+            return $best;
+        };
+
+        $usable = [];
+        foreach ($sourceRows as $sr) {
+            $resp = $responseFor((int)$sr['id'], $sr['occurred_at']);
+            if (!$resp) continue; // keine Wirkung im Fenster gefunden - kein auswertbarer Datenpunkt
+            $usable[] = [
+                'primaryValue' => $sr['value_num'] !== null ? (float)$sr['value_num']
+                                 : ($sr['value_key'] !== null ? (float)$sr['value_key'] : null),
+                'tags'     => $sourceTags[(int)$sr['id']] ?? [],
+                'response' => $resp,
+            ];
+        }
+
+        return [
+            'outcomeFields' => $outcomeFields,
+            'primaryField'  => $primaryField,
+            'buckets'       => $primaryField ? $this->bucketAnalysis($usable, $primaryField, $outcomeFields) : [],
+            'tags'          => $this->tagAnalysis($usable, $outcomeFields, $minOccurrences),
+            'sourceCount'   => count($sourceRows),
+            'usableCount'   => count($usable),
+        ];
+    }
+
+    private function bucketAnalysis(array $usable, array $primaryField, array $outcomeFields): array
+    {
+        $bucketed = [];
+        foreach ($usable as $u) {
+            if ($u['primaryValue'] === null) continue;
+            $bucketed[$this->bucketLabel($primaryField, $u['primaryValue'])][] = $u['response'];
+        }
+
+        $out = [];
+        foreach ($bucketed as $label => $responses) {
+            $out[] = ['label' => $label, 'n' => count($responses),
+                      'avg' => $this->averagePerField($responses, $outcomeFields)];
+        }
+        return $out;
+    }
+
+    private function bucketLabel(array $field, float $value): string
+    {
+        if ($field['ftype'] === 'bool') return $value >= 1 ? 'Ja' : 'Nein';
+        if ($field['ftype'] === 'choice') {
+            foreach ($field['options_list'] as $opt) {
+                if (isset($opt['k']) && (float)$opt['k'] === $value) return $opt['l'] ?? (string)$value;
+            }
+            return (string)$value;
+        }
+        $min = $field['min_val'] !== null ? (float)$field['min_val'] : 0.0;
+        $max = $field['max_val'] !== null ? (float)$field['max_val'] : 10.0;
+        $range = max($max - $min, 0.001);
+        if ($value <= $min + $range / 3) return 'niedrig';
+        if ($value >= $max - $range / 3) return 'hoch';
+        return 'mittel';
+    }
+
+    private function tagAnalysis(array $usable, array $outcomeFields, int $minOccurrences): array
+    {
+        $allTagNames = [];
+        foreach ($usable as $u) {
+            foreach ($u['tags'] as $t) $allTagNames[$t['name']] = true;
+        }
+
+        $out = [];
+        foreach (array_keys($allTagNames) as $tagName) {
+            $with = $without = [];
+            foreach ($usable as $u) {
+                $has = false;
+                foreach ($u['tags'] as $t) { if ($t['name'] === $tagName) { $has = true; break; } }
+                if ($has) $with[] = $u['response']; else $without[] = $u['response'];
+            }
+            if (count($with) < $minOccurrences) continue;
+
+            $out[] = [
+                'name' => $tagName, 'n' => count($with), 'nWithout' => count($without),
+                'avgWith' => $this->averagePerField($with, $outcomeFields),
+                'avgWithout' => $this->averagePerField($without, $outcomeFields),
+            ];
+        }
+
+        usort($out, function ($a, $b) use ($outcomeFields) {
+            return $this->maxDiff($b, $outcomeFields) <=> $this->maxDiff($a, $outcomeFields);
+        });
+        return $out;
+    }
+
+    private function maxDiff(array $tagRow, array $outcomeFields): float
+    {
+        $max = 0.0;
+        foreach ($outcomeFields as $f) {
+            $fid = (int)$f['id'];
+            if (isset($tagRow['avgWith'][$fid], $tagRow['avgWithout'][$fid])) {
+                $max = max($max, abs($tagRow['avgWith'][$fid] - $tagRow['avgWithout'][$fid]));
+            }
+        }
+        return $max;
+    }
+
+    private function averagePerField(array $responses, array $outcomeFields): array
+    {
+        $out = [];
+        foreach ($outcomeFields as $f) {
+            $fid = (int)$f['id'];
+            $vals = [];
+            foreach ($responses as $r) { if (isset($r[$fid])) $vals[] = $r[$fid]; }
+            $out[$fid] = $vals ? array_sum($vals) / count($vals) : null;
+        }
+        return $out;
     }
 
     public function entry(int $entryId): ?array
@@ -319,6 +594,7 @@ final class DiaryRepository extends Repository
         if (!$row) return null;
 
         $rows = $this->attachValues([$row], $this->fields((int)$row['type_id']));
+        $rows[0]['tags'] = $this->app->tags()->forObject($this->module(), $entryId, $this->ownerId);
         return $rows[0];
     }
 

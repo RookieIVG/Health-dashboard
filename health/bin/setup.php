@@ -32,15 +32,15 @@ if ($cmd === 'keys') {
     if (!is_dir($dir) && !mkdir($dir, 0700, true)) {
         exit("Verzeichnis {$dir} kann nicht angelegt werden.\n");
     }
-    foreach (['master.key', 'index.key'] as $name) {
-        $path = $dir . '/' . $name;
-        if (file_exists($path)) {
+    foreach (['master', 'index'] as $name) {
+        if (file_exists($dir . '/' . $name . '.key.php') || file_exists($dir . '/' . $name . '.key')) {
             echo "übersprungen (existiert bereits): {$name}\n";
             continue;
         }
-        file_put_contents($path, Crypto::generateKeyFileContent());
-        chmod($path, 0400);
-        echo "erzeugt: {$name}\n";
+        if (!Crypto::writeKeyFile($dir, $name, Crypto::generateKeyFileContent())) {
+            exit("FEHLER: {$name}.key.php konnte nicht geschrieben werden.\n");
+        }
+        echo "erzeugt: {$name}.key.php\n";
     }
     echo "\nWICHTIG: Diese Dateien jetzt sichern.\n"
        . "Ohne master.key sind alle verschlüsselten Daten unwiederbringlich verloren.\n"
@@ -66,8 +66,16 @@ if ($cmd === 'check') {
     $line(extension_loaded('mbstring'), 'mbstring');
     $line(in_array('aes-256-gcm', openssl_get_cipher_methods(), true), 'AES-256-GCM verfügbar');
     $line(defined('PASSWORD_ARGON2ID'), 'Argon2id (sonst Fallback auf bcrypt)');
-    $line(is_readable($app->config['paths']['keys'] . '/master.key'), 'master.key lesbar');
-    $line(is_readable($app->config['paths']['keys'] . '/index.key'), 'index.key lesbar');
+    $keyInfo = Crypto::keyFileInfo($app->config['paths']['keys']);
+    foreach ($keyInfo as $name => $i) {
+        $line($i['format'] !== 'fehlt', "Schlüssel {$name} vorhanden (Format: {$i['format']})");
+        if ($i['format'] === 'plain') {
+            echo "         Hinweis: Altformat. Umstellung auf {$name}.key.php empfohlen.\n";
+        }
+        if ($i['php_exists'] && $i['old_exists']) {
+            echo "         Hinweis: alte Datei {$name}.key liegt noch daneben und sollte weg.\n";
+        }
+    }
     $line(is_writable($app->config['paths']['storage']), 'storage/ beschreibbar');
     $line(is_writable($app->config['paths']['sessions']), 'storage/sessions/ beschreibbar');
 

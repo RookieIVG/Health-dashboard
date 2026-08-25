@@ -7,6 +7,7 @@ use Health\AppointmentsRepository as Appt;
 use Health\ContactsRepository;
 use Health\Csrf;
 use Health\Ics;
+use Health\Modules;
 use Health\View;
 
 $app = App::boot();
@@ -49,7 +50,7 @@ View::start($app, ['title' => 'Termine – ' . $app->config['app']['name'], 'act
 <?php View::flash($ok, 'ok'); View::flash($error, 'error'); ?>
 
 <div class="panel">
-  <h1>Termine</h1>
+  <h1><?= View::moduleDot(Modules::APPOINTMENT) ?>Termine</h1>
   <p class="sub">
     <?= count($upcoming) ?> anstehend
     · <a href="<?= App::url('/contacts.php') ?>">Ärzte und Kontakte</a>
@@ -87,6 +88,25 @@ View::start($app, ['title' => 'Termine – ' . $app->config['app']['name'], 'act
   <?php endif; ?>
 </div>
 
+<?php if ($past): ?>
+<div class="panel">
+  <h2>Vergangene Termine</h2>
+  <?php foreach ($past as $a): ?>
+    <div class="ev">
+      <div class="t" style="width:74px"><?= App::e($app->local($a['starts_at'], 'd.m.y')) ?></div>
+      <div class="body">
+        <div class="title">
+          <a href="<?= App::url('/appointment.php?id=' . (int)$a['id']) ?>"><?= App::e($a['title']) ?></a>
+          <span class="mod"><?= App::e(Appt::STATUS[$a['status']]) ?></span>
+        </div>
+        <?php if (!empty($a['result'])): ?>
+          <div class="sum"><?= App::e(mb_substr((string)$a['result'], 0, 140)) ?></div>
+        <?php endif; ?>
+      </div>
+    </div>
+  <?php endforeach; ?>
+</div>
+<?php endif; ?>
 <div class="panel">
   <h2>Neuer Termin</h2>
   <form method="post">
@@ -167,23 +187,4 @@ View::start($app, ['title' => 'Termine – ' . $app->config['app']['name'], 'act
   </div>
 </div>
 
-<?php if ($past): ?>
-<div class="panel">
-  <h2>Vergangene Termine</h2>
-  <?php foreach ($past as $a): ?>
-    <div class="ev">
-      <div class="t" style="width:74px"><?= App::e($app->local($a['starts_at'], 'd.m.y')) ?></div>
-      <div class="body">
-        <div class="title">
-          <a href="<?= App::url('/appointment.php?id=' . (int)$a['id']) ?>"><?= App::e($a['title']) ?></a>
-          <span class="mod"><?= App::e(Appt::STATUS[$a['status']]) ?></span>
-        </div>
-        <?php if (!empty($a['result'])): ?>
-          <div class="sum"><?= App::e(mb_substr((string)$a['result'], 0, 140)) ?></div>
-        <?php endif; ?>
-      </div>
-    </div>
-  <?php endforeach; ?>
-</div>
-<?php endif; ?>
 <?php View::end($app); ?>

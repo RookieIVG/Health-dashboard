@@ -21,7 +21,7 @@ final class FindingsRepository extends Repository
 
     protected function encryptedFields(): array
     {
-        return ['title' => true, 'institution' => true, 'doctor' => true,
+        return ['title' => true, 'doctor' => true,
                 'summary' => true, 'text' => true];
     }
 
@@ -65,6 +65,11 @@ final class FindingsRepository extends Repository
         }
         $utc = $this->toUtc(str_replace('T', ' ', $when));
 
+        $contactsRepo = new ContactsRepository($this->app, $this->ownerId);
+        $contactId = !empty($d['contact_new'])
+            ? $contactsRepo->findOrCreateClinic((string)$d['contact_new'])
+            : ((!empty($d['contact_id'])) ? (int)$d['contact_id'] : null);
+
         $fields = [
             'occurred_at'  => $utc,
             'received_at'  => self::dateOrNull($d['received_at'] ?? null),
@@ -73,11 +78,11 @@ final class FindingsRepository extends Repository
             'is_important' => !empty($d['is_important']) ? 1 : 0,
             'is_archived'  => !empty($d['is_archived']) ? 1 : 0,
             'title'        => mb_substr($title, 0, 200),
-            'institution'  => self::strOrNull($d['institution'] ?? null),
             'doctor'       => self::strOrNull($d['doctor'] ?? null),
             'summary'      => self::strOrNull($d['summary'] ?? null),
             'text'         => self::strOrNull($d['text'] ?? null),
         ];
+        $fields['contact_id'] = $contactId;
 
         if ($id === null) {
             $id = $this->create($fields);
@@ -85,11 +90,13 @@ final class FindingsRepository extends Repository
             $this->update($id, $fields);
         }
 
+        $contactName = $contactId ? ($contactsRepo->find($contactId)['name'] ?? null) : null;
+
         $this->touchTimeline(
             refId:      $id,
             occurredAt: $utc,
             title:      self::categoryLabel($category) . ': ' . $fields['title'],
-            summary:    $this->buildSummary($fields),
+            summary:    $this->buildSummary($fields, $contactName),
             severity:   $fields['is_important'] ? 1 : 0
         );
 
@@ -139,6 +146,7 @@ final class FindingsRepository extends Repository
         $sql .= ' ORDER BY f.occurred_at DESC, f.id DESC LIMIT ' . max(1, min($limit, 1000));
 
         $rows = $this->hydrateAll($this->db->all($sql, $par));
+        ContactsRepository::resolveInto($rows, $this->app, $this->ownerId);
 
         // Volltextsuche muss nach dem Entschlüsseln stattfinden: über eine
         // verschlüsselte Spalte kann MySQL kein LIKE ausführen. Bei privaten
@@ -165,6 +173,10 @@ final class FindingsRepository extends Repository
     {
         $row = $this->find($id);
         if (!$row) return null;
+
+        $rows = [$row];
+        ContactsRepository::resolveInto($rows, $this->app, $this->ownerId);
+        $row = $rows[0];
 
         $row['attachments'] = $this->app->attachments()->forObject($this->module(), $id, $this->ownerId);
         $row['tags']        = $this->app->tags()->forObject($this->module(), $id, $this->ownerId);
@@ -216,9 +228,9 @@ final class FindingsRepository extends Repository
 
     // =================================================================
 
-    private function buildSummary(array $f): ?string
+    private function buildSummary(array $f, ?string $contactName = null): ?string
     {
-        $parts = array_filter([$f['institution'], $f['doctor'], $f['summary']]);
+        $parts = array_filter([$contactName, $f['doctor'], $f['summary']]);
         $s = implode(' · ', $parts);
         return $s === '' ? null : mb_substr($s, 0, 400);
     }

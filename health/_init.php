@@ -8,7 +8,7 @@ declare(strict_types=1);
  * Wenn du app/ verschiebst, änderst du nur diese Zeile.
  */
 
-const APP_ROOT = 'XXXXXXXXXXXX';
+const APP_ROOT = '/home/.sites/31/site7850162/web/health/app';
 
 if (!is_file(APP_ROOT . '/src/App.php')) {
     http_response_code(500);

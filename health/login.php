@@ -31,9 +31,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 View::startBare($app, 'Anmeldung – ' . $app->config['app']['name']);
 ?>
 <div class="panel">
-  <img class="logo" src="<?= App::url('/assets/brand/logo.svg') ?>"
-       alt="<?= App::e($app->config['app']['name']) ?>" width="430" height="100">
-  <p class="sub" style="margin-top:14px">Bitte melde dich an.</p>
+  <div style="text-align:center;margin-bottom:4px">
+    <img src="<?= App::url('/assets/brand/mark.svg') ?>" alt="" width="72" height="72" style="display:block;margin:0 auto">
+    <div style="font-weight:700;font-size:1.3rem;letter-spacing:-.01em;color:var(--ink);margin-top:8px">
+      <?= App::e($app->config['app']['name']) ?>
+    </div>
+    <div style="color:var(--muted);font-size:.88rem;margin-top:2px">persönliche Gesundheitsakte</div>
+  </div>
+  <p class="sub" style="margin-top:14px;text-align:center">Bitte melde dich an.</p>
 
   <?php View::flash($error, 'error'); ?>
 

@@ -18,7 +18,8 @@ final class Auth
         private Db $db,
         private Crypto $crypto,
         private Audit $audit,
-        private array $cfg          // $config['security']
+        private array $cfg,          // $config['security']
+        private array $appCfg = []   // $config['app'] - nur für base_path/force_https beim Cookie
     ) {}
 
     // =================================================================
@@ -83,16 +84,25 @@ final class Auth
                        [':id' => $user['id']]);
 
         $needs2fa = (int)$user['totp_enabled'] === 1;
+        $trustedDevice = $needs2fa ? $this->matchTrustedDevice((int)$user['id']) : null;
 
-        $this->startSession((int)$user['id'], mfaPassed: !$needs2fa);
+        $this->startSession((int)$user['id'], mfaPassed: !$needs2fa || $trustedDevice !== null);
 
-        if ($needs2fa) {
+        if ($needs2fa && $trustedDevice === null) {
             $_SESSION['auth_stage'] = self::STAGE_PENDING;
             $this->audit->log('login.password_ok', (int)$user['id'], (int)$user['id'], 'auth');
             return ['ok' => true, 'stage' => self::STAGE_PENDING, 'user_id' => (int)$user['id']];
         }
 
-        // Kein 2FA aktiv: bei erzwungenem 2FA muss der User es jetzt einrichten.
+        if ($trustedDevice !== null) {
+            $this->db->run('UPDATE trusted_devices SET last_used_at = UTC_TIMESTAMP() WHERE id = :id',
+                           [':id' => $trustedDevice['id']]);
+            $this->audit->log('login.trusted_device', (int)$user['id'], (int)$user['id'], 'auth',
+                              (int)$trustedDevice['id']);
+        }
+
+        // Kein 2FA aktiv (oder vertrautes Gerät): bei erzwungenem 2FA
+        // muss der User es ohne vertrautes Gerät trotzdem einrichten.
         $_SESSION['auth_stage'] = self::STAGE_FULL;
         $this->finalizeLogin((int)$user['id']);
         return ['ok' => true, 'stage' => self::STAGE_FULL, 'user_id' => (int)$user['id']];
@@ -199,6 +209,123 @@ final class Auth
         $this->recordAttempt($ipKey, false);
         $this->audit->log('login.recovery_failed', (int)$userId, (int)$userId, 'auth');
         return ['ok' => false, 'error' => 'Der Wiederherstellungscode ist ungültig.'];
+    }
+
+    // =================================================================
+    // "Angemeldet bleiben" - vertraute Geräte
+    // =================================================================
+
+    /**
+     * Prüft das Cookie des aktuellen Browsers gegen die gespeicherten
+     * vertrauten Geräte dieses Nutzers. Der Token selbst steht nur
+     * gehasht in der Datenbank (wie bei Wiederherstellungscodes) - ein
+     * Datenbank-Leck allein reicht nicht, um sich als vertrautes Gerät
+     * auszugeben, dafür bräuchte man zusätzlich das Cookie selbst.
+     */
+    private function matchTrustedDevice(int $userId): ?array
+    {
+        $raw = $_COOKIE[$this->trustedDeviceCookieName()] ?? '';
+        if (!str_contains($raw, '.')) return null;
+        [$id, $token] = explode('.', $raw, 2);
+        if (!ctype_digit($id) || $token === '') return null;
+
+        $row = $this->db->one(
+            'SELECT * FROM trusted_devices
+             WHERE id = :id AND user_id = :u AND revoked_at IS NULL AND expires_at > UTC_TIMESTAMP()',
+            [':id' => (int)$id, ':u' => $userId]
+        );
+        if (!$row || !password_verify($token, $row['token_hash'])) return null;
+
+        return $row;
+    }
+
+    /**
+     * Legt für den aktuellen Browser ein vertrautes Gerät an und setzt
+     * das zugehörige Cookie. Wird nach erfolgreicher 2FA aufgerufen,
+     * wenn "dieses Gerät merken" angehakt war.
+     */
+    public function trustThisDevice(int $userId): void
+    {
+        $token = bin2hex(random_bytes(32));
+        $days  = (int)($this->cfg['trusted_device_days'] ?? 30);
+
+        $st = $this->db->pdo()->prepare(
+            'INSERT INTO trusted_devices (user_id, token_hash, label, ip, expires_at)
+             VALUES (:u, :h, :l, :ip, DATE_ADD(UTC_TIMESTAMP(), INTERVAL :d DAY))'
+        );
+        $st->bindValue(':u', $userId, PDO::PARAM_INT);
+        $st->bindValue(':h', password_hash($token, self::hashAlgo(), self::hashOptions()));
+        $st->bindValue(':l', mb_substr($this->guessDeviceLabel(), 0, 255));
+        $st->bindValue(':ip', Audit::ipBinary(), PDO::PARAM_LOB);
+        $st->bindValue(':d', $days, PDO::PARAM_INT);
+        $st->execute();
+
+        $deviceId = (int)$this->db->pdo()->lastInsertId();
+        $this->setTrustedDeviceCookie($deviceId . '.' . $token, $days);
+        $this->audit->log('login.trusted_device_added', $userId, $userId, 'auth', $deviceId);
+    }
+
+    public function listTrustedDevices(int $userId): array
+    {
+        return $this->db->all(
+            'SELECT * FROM trusted_devices WHERE user_id = :u AND revoked_at IS NULL AND expires_at > UTC_TIMESTAMP()
+             ORDER BY last_used_at DESC, created_at DESC',
+            [':u' => $userId]
+        );
+    }
+
+    public function revokeTrustedDevice(int $userId, int $deviceId): bool
+    {
+        $st = $this->db->run(
+            'UPDATE trusted_devices SET revoked_at = UTC_TIMESTAMP()
+             WHERE id = :id AND user_id = :u AND revoked_at IS NULL',
+            [':id' => $deviceId, ':u' => $userId]
+        );
+        return $st->rowCount() === 1;
+    }
+
+    private function setTrustedDeviceCookie(string $value, int $days): void
+    {
+        setcookie($this->trustedDeviceCookieName(), $value, [
+            'expires'  => time() + $days * 86400,
+            'path'     => ($this->appCfg['base_path'] ?? '') . '/',
+            'domain'   => '',
+            'secure'   => (bool)($this->appCfg['force_https'] ?? true),
+            'httponly' => true,
+            'samesite' => 'Lax',
+        ]);
+    }
+
+    /**
+     * Mit Fallback statt direktem Array-Zugriff: fehlt der Konfigurations-
+     * wert (z.B. weil in config.php vergessen zu ergänzen), würde
+     * setcookie() sonst null statt eines Strings bekommen – bei
+     * declare(strict_types=1) ist das ein harter Fehler, kein sanftes
+     * Ausweichen. Mit Fallback bleibt die Funktion nutzbar, auch wenn
+     * die Konfiguration unvollständig ist.
+     */
+    private function trustedDeviceCookieName(): string
+    {
+        return (string)($this->cfg['trusted_device_cookie'] ?? 'HDTRUST');
+    }
+
+    /** Grobe, rein kosmetische Kennzeichnung für die Geräteliste im Konto. */
+    private function guessDeviceLabel(): string
+    {
+        $ua = (string)($_SERVER['HTTP_USER_AGENT'] ?? '');
+        foreach (['iPhone', 'iPad', 'Android', 'Macintosh', 'Windows', 'Linux'] as $needle) {
+            if (str_contains($ua, $needle)) {
+                $browser = match (true) {
+                    str_contains($ua, 'Edg/')     => 'Edge',
+                    str_contains($ua, 'Chrome/')  => 'Chrome',
+                    str_contains($ua, 'Firefox/') => 'Firefox',
+                    str_contains($ua, 'Safari/')  => 'Safari',
+                    default => '',
+                };
+                return trim($needle . ' · ' . $browser, ' ·');
+            }
+        }
+        return 'Unbekanntes Gerät';
     }
 
     private function finalizeLogin(int $userId): void
@@ -320,6 +447,33 @@ final class Auth
              WHERE user_id = :u AND sid_hash <> :s AND revoked_at IS NULL',
             [':u' => $userId, ':s' => hash('sha256', session_id())]
         );
+    }
+
+    /**
+     * Eine bestimmte Sitzung des Benutzers gezielt beenden – etwa ein
+     * verlorenes Gerät oder eine Sitzung, die nicht mehr gebraucht wird.
+     * Auf die eigene, gerade aktive Sitzung angewendet meldet das den
+     * Benutzer sofort ab; die Aufrufstelle leitet danach entsprechend um.
+     *
+     * Scope über user_id: ohne diesen Filter könnte ein Benutzer über
+     * eine erratene ID fremde Sitzungen beenden.
+     */
+    public function revokeSession(int $userId, int $sessionId): bool
+    {
+        $st = $this->db->run(
+            'UPDATE user_sessions SET revoked_at = UTC_TIMESTAMP()
+             WHERE id = :id AND user_id = :u AND revoked_at IS NULL',
+            [':id' => $sessionId, ':u' => $userId]
+        );
+        return $st->rowCount() === 1;
+    }
+
+    /** Ob die übergebene Sitzungs-ID die aktuell aktive Sitzung ist. */
+    public function isCurrentSession(int $sessionId): bool
+    {
+        $row = $this->db->one('SELECT id FROM user_sessions WHERE sid_hash = :s',
+                              [':s' => hash('sha256', session_id())]);
+        return $row !== null && (int)$row['id'] === $sessionId;
     }
 
     // =================================================================
@@ -488,6 +642,10 @@ final class Auth
             [':id' => $userId]
         );
         $this->db->run('DELETE FROM user_recovery_codes WHERE user_id = :id', [':id' => $userId]);
+        // Ohne 2FA hat "vertrautes Gerät" keine Bedeutung mehr - sonst
+        // blieben stille Karteileichen zurück, die bei erneuter
+        // Aktivierung von 2FA unerwartet wieder greifen würden.
+        $this->db->run('DELETE FROM trusted_devices WHERE user_id = :id', [':id' => $userId]);
         $this->audit->log('user.2fa_disabled', $userId, $this->userId(), 'auth', $userId);
     }
 
@@ -506,6 +664,95 @@ final class Auth
         }
         $this->audit->log('user.recovery_codes_generated', $userId, $this->userId(), 'auth', $userId);
         return $codes;
+    }
+
+    // =================================================================
+    // Persönliche Daten (Konto)
+    // =================================================================
+
+    public const SEX_LABELS = [
+        'm'       => 'männlich',
+        'w'       => 'weiblich',
+        'd'       => 'divers',
+        'unknown' => 'keine Angabe',
+    ];
+
+    /** Entschlüsselte Profildaten für die Kontoseite. */
+    public function profile(int $userId): array
+    {
+        $row = $this->db->one('SELECT * FROM users WHERE id = :id', [':id' => $userId]);
+        if (!$row) throw new RuntimeException('Benutzer nicht gefunden.');
+
+        $dek = $this->dek($userId);
+        return [
+            'first_name' => $this->crypto->dec($dek, $row['first_name_enc'], 'user.first_name'),
+            'last_name'  => $this->crypto->dec($dek, $row['last_name_enc'], 'user.last_name'),
+            'birthdate'  => $row['birthdate'],
+            'sex'        => $row['sex'],
+            'email'      => $this->crypto->dec($dek, $row['email_enc'], 'user.email'),
+        ];
+    }
+
+    /**
+     * Vor-/Nachname, Geburtsdatum und Geschlecht. Alle Felder optional –
+     * niemand soll gezwungen sein, das eigene Geburtsdatum preiszugeben,
+     * nur weil ein einzelnes Modul (Impfempfehlungen) davon profitiert.
+     */
+    public function updateProfile(int $userId, ?string $firstName, ?string $lastName, ?string $birthdate, string $sex, ?string $email = null): void
+    {
+        if (!isset(self::SEX_LABELS[$sex])) $sex = 'unknown';
+
+        $bd = null;
+        $birthdate = trim((string)$birthdate);
+        if ($birthdate !== '') {
+            $dt = \DateTimeImmutable::createFromFormat('!Y-m-d', $birthdate);
+            if ($dt === false || $dt > new \DateTimeImmutable('today')) {
+                throw new RuntimeException('Das Geburtsdatum ist ungültig oder liegt in der Zukunft.');
+            }
+            $bd = $dt->format('Y-m-d');
+        }
+
+        $dek = $this->dek($userId);
+        $firstName = trim((string)$firstName);
+        $lastName  = trim((string)$lastName);
+        $fEnc = $firstName !== '' ? $this->crypto->enc($dek, $firstName, 'user.first_name') : null;
+        $lEnc = $lastName  !== '' ? $this->crypto->enc($dek, $lastName, 'user.last_name') : null;
+
+        $email = trim((string)$email);
+        $eEnc = $bidx = null;
+        if ($email !== '') {
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                throw new RuntimeException('Die E-Mail-Adresse ist ungültig.');
+            }
+            $eEnc = $this->crypto->enc($dek, $email, 'user.email');
+            $bidx = $this->crypto->blindIndex('user.email', $email);
+        }
+
+        $st = $this->db->pdo()->prepare(
+            'UPDATE users SET first_name_enc = :f, last_name_enc = :l, birthdate = :b, sex = :s,
+                              email_enc = :e, email_bidx = :eb WHERE id = :id'
+        );
+        $st->bindValue(':f', $fEnc, $fEnc === null ? PDO::PARAM_NULL : PDO::PARAM_LOB);
+        $st->bindValue(':l', $lEnc, $lEnc === null ? PDO::PARAM_NULL : PDO::PARAM_LOB);
+        $st->bindValue(':b', $bd, $bd === null ? PDO::PARAM_NULL : PDO::PARAM_STR);
+        $st->bindValue(':s', $sex);
+        $st->bindValue(':e', $eEnc, $eEnc === null ? PDO::PARAM_NULL : PDO::PARAM_LOB);
+        $st->bindValue(':eb', $bidx, $bidx === null ? PDO::PARAM_NULL : PDO::PARAM_LOB);
+        $st->bindValue(':id', $userId, PDO::PARAM_INT);
+
+        try {
+            $st->execute();
+        } catch (\PDOException $e) {
+            // Doppelter Blind Index = dieselbe E-Mail hängt schon an einem
+            // anderen Konto (z.B. einem Familienmitglied).
+            if ($e->getCode() === '23000') {
+                throw new RuntimeException('Diese E-Mail-Adresse ist bereits einem anderen Konto zugeordnet.');
+            }
+            throw $e;
+        }
+
+        $this->userCache = null;
+        $this->audit->log('user.profile_updated', $userId, $userId, 'auth', $userId);
     }
 
     // =================================================================

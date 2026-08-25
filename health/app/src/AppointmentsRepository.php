@@ -85,6 +85,10 @@ final class AppointmentsRepository extends Repository
             $fields['uid'] = Auth::uuid4();
             $id = $this->create($fields);
         } else {
+            // Nach jeder Bearbeitung darf die E-Mail-Erinnerung erneut
+            // auslösen – sonst bliebe sie bei einer Verschiebung stumm,
+            // weil reminder_sent_at noch vom alten Termin gesetzt ist.
+            $fields['reminder_sent_at'] = null;
             $this->update($id, $fields);
         }
 

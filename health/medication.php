@@ -29,7 +29,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $weekdays = implode('', array_map('strval', array_map('intval', (array)($_POST['weekdays'] ?? []))));
                 $repo->addScheduleRow(
                     $id,
-                    (string)($_POST['period'] ?? ''),
+                    (string)($_POST['intake_time'] ?? ''),
                     (string)($_POST['dose'] ?? ''),
                     (string)($_POST['cycle_type'] ?? 'weekly'),
                     $weekdays,
@@ -44,9 +44,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $ok = 'Aus dem Plan entfernt.';
                 break;
             case 'take':
-                $now = (new DateTimeImmutable('now', new DateTimeZone($app->config['app']['timezone'])))->format('Y-m-d\TH:i');
-                $repo->logIntake($id, (int)($_POST['schedule_id'] ?? 0) ?: null, $now, null);
-                $ok = 'Abgezeichnet.';
+                $schedId = (int)($_POST['schedule_id'] ?? 0) ?: null;
+                $now = (new DateTimeImmutable('now', new DateTimeZone($app->config['app']['timezone'])));
+                if ($schedId !== null && $repo->takenOn($schedId, $now)) {
+                    $ok = 'Für heute bereits abgezeichnet.';
+                } else {
+                    $repo->logIntake($id, $schedId, $now->format('Y-m-d\TH:i'), null);
+                    $ok = 'Abgezeichnet.';
+                }
                 break;
             case 'log_intake':
                 $repo->logIntake(
@@ -98,9 +103,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 $m = $repo->detail($id);
 if (!$m) { header('Location: ' . App::url('/medications.php')); exit; }
 
-$intakes  = $repo->intakesFor($id, 50);
-$restocks = $repo->restocksFor($id, 30);
-$tz       = new DateTimeZone($app->config['app']['timezone']);
+$intakes    = $repo->intakesFor($id, 50);
+$restocks   = $repo->restocksFor($id, 30);
+$tz         = new DateTimeZone($app->config['app']['timezone']);
 $todayLocal = new DateTimeImmutable('now', $tz);
 
 View::start($app, ['title' => $m['name'] . ' – Medikation', 'active' => 'medication']);
@@ -119,13 +124,11 @@ View::start($app, ['title' => $m['name'] . ' – Medikation', 'active' => 'medic
   <?php if ($m['purpose']): ?><p><?= App::e($m['purpose']) ?></p><?php endif; ?>
   <?php if ($m['note']): ?><div style="white-space:pre-wrap;color:var(--muted)"><?= App::e($m['note']) ?></div><?php endif; ?>
 
-  <?php if ($m['stock_unit'] !== null): ?>
-    <?php
-      $low = $m['stock_quantity'] !== null && $m['stock_warn_at'] !== null
-             && (float)$m['stock_quantity'] <= (float)$m['stock_warn_at'];
-      $qtyFmt = $m['stock_quantity'] !== null
-              ? rtrim(rtrim(number_format((float)$m['stock_quantity'], 2, ',', '.'), '0'), ',') : '–';
-    ?>
+  <?php if ($m['stock_unit'] !== null):
+        $low = $m['stock_quantity'] !== null && $m['stock_warn_at'] !== null
+               && (float)$m['stock_quantity'] <= (float)$m['stock_warn_at'];
+        $qtyFmt = $m['stock_quantity'] !== null
+                ? rtrim(rtrim(number_format((float)$m['stock_quantity'], 2, ',', '.'), '0'), ',') : '–'; ?>
     <p class="sub" style="margin-top:10px;<?= $low ? 'color:var(--danger);font-weight:600' : '' ?>">
       Bestand: <?= App::e($qtyFmt) ?> <?= App::e($m['stock_unit']) ?>
       <?= $low ? ' – bald nachbestellen' : '' ?>
@@ -135,19 +138,19 @@ View::start($app, ['title' => $m['name'] . ' – Medikation', 'active' => 'medic
 
 <?php if (!$m['is_prn']): ?>
 <div class="panel">
-  <h2>Einnahmeplan</h2>
+  <h2>Aktueller Einnahmeplan</h2>
   <?php if (!$m['schedule']): ?>
     <p class="sub">Noch kein Plan hinterlegt.</p>
   <?php else: ?>
     <div class="table-wrap">
       <table class="stack">
-        <thead><tr><th>Tageszeit</th><th>Dosis</th><th>Zyklus</th><th>Heute</th><th></th></tr></thead>
+        <thead><tr><th>Uhrzeit</th><th>Dosis</th><th>Zyklus</th><th>Heute</th></tr></thead>
         <tbody>
         <?php foreach ($m['schedule'] as $s):
               $dueToday   = \Health\MedicationRepository::matchesDate($s, $todayLocal);
               $takenToday = $dueToday && $repo->takenOn((int)$s['id'], $todayLocal); ?>
           <tr>
-            <td data-label="Tageszeit"><?= App::e(Med::PERIODS[$s['period']]) ?></td>
+            <td data-label="Uhrzeit"><?= App::e(substr((string)$s['intake_time'], 0, 5)) ?></td>
             <td data-label="Dosis"><?= App::e($s['dose']) ?></td>
             <td data-label="Zyklus"><?= App::e(Med::cycleLabel($s)) ?></td>
             <td data-label="Heute">
@@ -165,140 +168,14 @@ View::start($app, ['title' => $m['name'] . ' – Medikation', 'active' => 'medic
                 </form>
               <?php endif; ?>
             </td>
-            <td>
-              <form method="post" data-confirm="Diesen Eintrag aus dem Plan entfernen?" style="margin:0">
-                <?= Csrf::field() ?>
-                <input type="hidden" name="action" value="delete_schedule">
-                <input type="hidden" name="id" value="<?= $id ?>">
-                <input type="hidden" name="row_id" value="<?= (int)$s['id'] ?>">
-                <button type="submit" class="secondary small">Entfernen</button>
-              </form>
-            </td>
           </tr>
         <?php endforeach; ?>
         </tbody>
       </table>
     </div>
   <?php endif; ?>
-
-  <form method="post" style="margin-top:16px">
-    <?= Csrf::field() ?>
-    <input type="hidden" name="action" value="add_schedule">
-    <input type="hidden" name="id" value="<?= $id ?>">
-    <div class="field-row">
-      <div>
-        <label for="period">Tageszeit</label>
-        <select id="period" name="period">
-          <?php foreach (Med::PERIODS as $k => $l): ?>
-            <option value="<?= App::e($k) ?>"><?= App::e($l) ?></option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-      <div>
-        <label for="dose">Dosis</label>
-        <input type="text" id="dose" name="dose" required maxlength="60" placeholder="z. B. 1 Tablette">
-      </div>
-      <div>
-        <label for="dose_qty">Menge (für Bestand)</label>
-        <input type="text" id="dose_qty" name="dose_qty" inputmode="decimal" placeholder="z. B. 1">
-      </div>
-      <div>
-        <label for="cycle_type">Zyklus</label>
-        <select id="cycle_type" name="cycle_type">
-          <?php foreach (Med::CYCLES as $k => $l): ?>
-            <option value="<?= App::e($k) ?>" <?= $k === 'weekly' ? 'selected' : '' ?>><?= App::e($l) ?></option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-    </div>
-
-    <div id="cycle-weekly-wrap">
-      <label>Wochentage</label>
-      <div class="filters" style="flex-wrap:wrap">
-        <?php foreach (Med::WEEKDAYS as $n => $l): ?>
-          <label class="chip" style="cursor:pointer">
-            <input type="checkbox" name="weekdays[]" value="<?= $n ?>" checked style="width:auto;margin-right:5px">
-            <?= App::e($l) ?>
-          </label>
-        <?php endforeach; ?>
-      </div>
-    </div>
-
-    <div id="cycle-interval-wrap" hidden>
-      <div class="field-row">
-        <div>
-          <label for="interval_days">Abstand in Tagen</label>
-          <input type="number" id="interval_days" name="interval_days" min="1" max="365" placeholder="z. B. 14">
-        </div>
-        <div>
-          <label for="anchor_date">Bezugsdatum</label>
-          <input type="date" id="anchor_date" name="anchor_date" value="<?= App::e(date('Y-m-d')) ?>">
-        </div>
-      </div>
-      <p class="hint">Der Zyklus zählt von diesem Datum an – bei 14 Tagen also alle zwei Wochen ab hier, unabhängig vom Wochentag.</p>
-    </div>
-    <p class="hint">
-      Die Menge wird nur für die Bestandsrechnung gebraucht (z. B. "1" bei
-      "1 Tablette"). Leer lassen, wenn du keinen Bestand führst.
-    </p>
-
-    <button type="submit" class="auto secondary">Zum Plan hinzufügen</button>
-  </form>
 </div>
 <?php endif; ?>
-
-<div class="panel">
-  <h2>Einnahme protokollieren</h2>
-  <p class="sub">Für "bei Bedarf" oder um eine Einnahme nachzutragen.</p>
-  <form method="post">
-    <?= Csrf::field() ?>
-    <input type="hidden" name="action" value="log_intake">
-    <input type="hidden" name="id" value="<?= $id ?>">
-
-    <div class="field-row">
-      <div>
-        <label for="taken_at">Zeitpunkt</label>
-        <input type="datetime-local" id="taken_at" name="taken_at" required
-               value="<?= App::e($todayLocal->format('Y-m-d\TH:i')) ?>">
-      </div>
-      <?php if ($m['schedule']): ?>
-      <div>
-        <label for="schedule_id">Plan-Zuordnung (optional)</label>
-        <select id="schedule_id" name="schedule_id">
-          <option value="">ohne Zuordnung</option>
-          <?php foreach ($m['schedule'] as $s): ?>
-            <option value="<?= (int)$s['id'] ?>">
-              <?= App::e(Med::PERIODS[$s['period']]) ?> · <?= App::e($s['dose']) ?>
-            </option>
-          <?php endforeach; ?>
-        </select>
-      </div>
-      <?php endif; ?>
-    </div>
-
-    <div class="field-row">
-      <div>
-        <label for="dose_text">Dosis (Anzeigetext)</label>
-        <input type="text" id="dose_text" name="dose_text" maxlength="60" placeholder="z. B. 1 Tablette">
-      </div>
-      <?php if ($m['stock_unit'] !== null): ?>
-      <div>
-        <label for="quantity">Menge (<?= App::e($m['stock_unit']) ?>)</label>
-        <input type="text" id="quantity" name="quantity" inputmode="decimal">
-      </div>
-      <?php endif; ?>
-    </div>
-
-    <label for="note">Notiz</label>
-    <input type="text" id="note" name="note" maxlength="255">
-
-    <button type="submit" class="auto secondary">Erfassen</button>
-    <p class="hint">
-      Bei Zuordnung zu einem Plan-Eintrag werden Dosis und Menge automatisch
-      übernommen, falls hier nichts eingetragen wird.
-    </p>
-  </form>
-</div>
 
 <div class="panel">
   <h2>Einnahmeverlauf</h2>
@@ -337,6 +214,59 @@ View::start($app, ['title' => $m['name'] . ' – Medikation', 'active' => 'medic
 </div>
 
 <div class="panel">
+  <h2>Einnahme protokollieren</h2>
+  <p class="sub">Für "bei Bedarf" oder um eine Einnahme nachzutragen.</p>
+  <form method="post">
+    <?= Csrf::field() ?>
+    <input type="hidden" name="action" value="log_intake">
+    <input type="hidden" name="id" value="<?= $id ?>">
+
+    <div class="field-row">
+      <div>
+        <label for="taken_at">Zeitpunkt</label>
+        <input type="datetime-local" id="taken_at" name="taken_at" required
+               value="<?= App::e($todayLocal->format('Y-m-d\TH:i')) ?>">
+      </div>
+      <?php if ($m['schedule']): ?>
+      <div>
+        <label for="schedule_id">Plan-Zuordnung (optional)</label>
+        <select id="schedule_id" name="schedule_id">
+          <option value="">ohne Zuordnung</option>
+          <?php foreach ($m['schedule'] as $s): ?>
+            <option value="<?= (int)$s['id'] ?>">
+              <?= App::e(substr((string)$s['intake_time'], 0, 5)) ?> Uhr · <?= App::e($s['dose']) ?>
+            </option>
+          <?php endforeach; ?>
+        </select>
+      </div>
+      <?php endif; ?>
+    </div>
+
+    <div class="field-row">
+      <div>
+        <label for="dose_text">Dosis (Anzeigetext)</label>
+        <input type="text" id="dose_text" name="dose_text" maxlength="60" placeholder="z. B. 1 Tablette">
+      </div>
+      <?php if ($m['stock_unit'] !== null): ?>
+      <div>
+        <label for="quantity">Menge (<?= App::e($m['stock_unit']) ?>)</label>
+        <input type="text" id="quantity" name="quantity" inputmode="decimal">
+      </div>
+      <?php endif; ?>
+    </div>
+
+    <label for="note">Notiz</label>
+    <input type="text" id="note" name="note" maxlength="255">
+
+    <button type="submit" class="auto secondary">Erfassen</button>
+    <p class="hint">
+      Bei Zuordnung zu einem Plan-Eintrag werden Dosis und Menge automatisch
+      übernommen, falls hier nichts eingetragen wird.
+    </p>
+  </form>
+</div>
+
+<div class="panel">
   <h2>Bestand</h2>
   <?php if ($m['stock_unit'] === null): ?>
     <p class="sub">
@@ -352,25 +282,6 @@ View::start($app, ['title' => $m['name'] . ' – Medikation', 'active' => 'medic
         · Warnschwelle <?= App::e(rtrim(rtrim(number_format((float)$m['stock_warn_at'],2,',','.'),'0'),',')) ?> <?= App::e($m['stock_unit']) ?>
       <?php endif; ?>
     </p>
-
-    <form method="post">
-      <?= Csrf::field() ?>
-      <input type="hidden" name="action" value="restock">
-      <input type="hidden" name="id" value="<?= $id ?>">
-      <div class="field-row">
-        <div>
-          <label for="restock_qty">Neue Packung: Menge</label>
-          <input type="text" id="restock_qty" name="restock_qty" required inputmode="decimal">
-        </div>
-        <div>
-          <label for="restock_date">Datum</label>
-          <input type="date" id="restock_date" name="restock_date" value="<?= App::e(date('Y-m-d')) ?>" required>
-        </div>
-      </div>
-      <label for="restock_note">Notiz</label>
-      <input type="text" id="restock_note" name="restock_note" maxlength="255" placeholder="z. B. Apotheke, Rezeptnummer">
-      <button type="submit" class="auto secondary">Packung erfassen</button>
-    </form>
 
     <?php if ($restocks): ?>
       <div class="table-wrap" style="margin-top:16px">
@@ -397,50 +308,26 @@ View::start($app, ['title' => $m['name'] . ' – Medikation', 'active' => 'medic
         </table>
       </div>
     <?php endif; ?>
-  <?php endif; ?>
-</div>
 
-<div class="panel">
-  <h2>Dateien</h2>
-  <?php if ($m['attachments']): ?>
-    <div class="table-wrap">
-      <table class="stack">
-        <thead><tr><th>Datei</th><th>Größe</th><th></th></tr></thead>
-        <tbody>
-        <?php foreach ($m['attachments'] as $f): ?>
-          <tr>
-            <td data-label="Datei">
-              <a href="<?= App::url('/file.php?id=' . (int)$f['id']) ?>" target="_blank" rel="noopener">
-                <?= App::e($f['filename']) ?></a>
-            </td>
-            <td data-label="Größe"><?= App::e(AttachmentService::formatSize((int)$f['size_bytes'])) ?></td>
-            <td>
-              <form method="post" data-confirm="Diese Datei löschen?" style="margin:0">
-                <?= Csrf::field() ?>
-                <input type="hidden" name="action" value="delete_file">
-                <input type="hidden" name="id" value="<?= $id ?>">
-                <input type="hidden" name="att" value="<?= (int)$f['id'] ?>">
-                <button type="submit" class="secondary small">Löschen</button>
-              </form>
-            </td>
-          </tr>
-        <?php endforeach; ?>
-        </tbody>
-      </table>
-    </div>
-  <?php else: ?>
-    <p class="sub">Noch keine Datei angehängt (z. B. Beipackzettel).</p>
+    <form method="post" style="margin-top:16px">
+      <?= Csrf::field() ?>
+      <input type="hidden" name="action" value="restock">
+      <input type="hidden" name="id" value="<?= $id ?>">
+      <div class="field-row">
+        <div>
+          <label for="restock_qty">Neue Packung: Menge</label>
+          <input type="text" id="restock_qty" name="restock_qty" required inputmode="decimal">
+        </div>
+        <div>
+          <label for="restock_date">Datum</label>
+          <input type="date" id="restock_date" name="restock_date" value="<?= App::e(date('Y-m-d')) ?>" required>
+        </div>
+      </div>
+      <label for="restock_note">Notiz</label>
+      <input type="text" id="restock_note" name="restock_note" maxlength="255" placeholder="z. B. Apotheke, Rezeptnummer">
+      <button type="submit" class="auto secondary">Packung erfassen</button>
+    </form>
   <?php endif; ?>
-
-  <form method="post" enctype="multipart/form-data">
-    <?= Csrf::field() ?>
-    <input type="hidden" name="action" value="upload">
-    <input type="hidden" name="id" value="<?= $id ?>">
-    <label for="file">Datei hinzufügen</label>
-    <input type="file" id="file" name="file" required
-           accept=".pdf,.jpg,.jpeg,.png,.heic,.tif,.tiff,.txt,.csv">
-    <button type="submit" class="auto secondary">Hochladen</button>
-  </form>
 </div>
 
 <div class="panel">
@@ -529,6 +416,97 @@ View::start($app, ['title' => $m['name'] . ' – Medikation', 'active' => 'medic
     <button type="submit" class="auto">Speichern</button>
   </form>
 
+  <?php if (!$m['is_prn']): ?>
+    <h2 style="margin-top:24px">Einnahmeplan</h2>
+    <?php if ($m['schedule']): ?>
+      <div class="table-wrap">
+        <table class="stack">
+          <thead><tr><th>Uhrzeit</th><th>Dosis</th><th>Zyklus</th><th></th></tr></thead>
+          <tbody>
+          <?php foreach ($m['schedule'] as $s): ?>
+            <tr>
+              <td data-label="Uhrzeit"><?= App::e(substr((string)$s['intake_time'], 0, 5)) ?></td>
+              <td data-label="Dosis"><?= App::e($s['dose']) ?></td>
+              <td data-label="Zyklus"><?= App::e(Med::cycleLabel($s)) ?></td>
+              <td>
+                <form method="post" data-confirm="Diesen Eintrag aus dem Plan entfernen?" style="margin:0">
+                  <?= Csrf::field() ?>
+                  <input type="hidden" name="action" value="delete_schedule">
+                  <input type="hidden" name="id" value="<?= $id ?>">
+                  <input type="hidden" name="row_id" value="<?= (int)$s['id'] ?>">
+                  <button type="submit" class="secondary small">Entfernen</button>
+                </form>
+              </td>
+            </tr>
+          <?php endforeach; ?>
+          </tbody>
+        </table>
+      </div>
+    <?php else: ?>
+      <p class="sub">Noch kein Plan hinterlegt.</p>
+    <?php endif; ?>
+
+    <form method="post" style="margin-top:16px">
+      <?= Csrf::field() ?>
+      <input type="hidden" name="action" value="add_schedule">
+      <input type="hidden" name="id" value="<?= $id ?>">
+      <div class="field-row">
+        <div>
+          <label for="intake_time">Uhrzeit</label>
+          <input type="time" id="intake_time" name="intake_time" required value="08:00">
+        </div>
+        <div>
+          <label for="dose">Dosis</label>
+          <input type="text" id="dose" name="dose" required maxlength="60" placeholder="z. B. 1 Tablette">
+        </div>
+        <div>
+          <label for="dose_qty">Menge (für Bestand)</label>
+          <input type="text" id="dose_qty" name="dose_qty" inputmode="decimal" placeholder="z. B. 1">
+        </div>
+        <div>
+          <label for="cycle_type">Zyklus</label>
+          <select id="cycle_type" name="cycle_type">
+            <?php foreach (Med::CYCLES as $k => $l): ?>
+              <option value="<?= App::e($k) ?>" <?= $k === 'weekly' ? 'selected' : '' ?>><?= App::e($l) ?></option>
+            <?php endforeach; ?>
+          </select>
+        </div>
+      </div>
+
+      <div id="cycle-weekly-wrap">
+        <label>Wochentage</label>
+        <div class="filters" style="flex-wrap:wrap">
+          <?php foreach (Med::WEEKDAYS as $n => $l): ?>
+            <label class="chip" style="cursor:pointer">
+              <input type="checkbox" name="weekdays[]" value="<?= $n ?>" checked style="width:auto;margin-right:5px">
+              <?= App::e($l) ?>
+            </label>
+          <?php endforeach; ?>
+        </div>
+      </div>
+
+      <div id="cycle-interval-wrap" hidden>
+        <div class="field-row">
+          <div>
+            <label for="interval_days">Abstand in Tagen</label>
+            <input type="number" id="interval_days" name="interval_days" min="1" max="365" placeholder="z. B. 14">
+          </div>
+          <div>
+            <label for="anchor_date">Bezugsdatum</label>
+            <input type="date" id="anchor_date" name="anchor_date" value="<?= App::e(date('Y-m-d')) ?>">
+          </div>
+        </div>
+        <p class="hint">Der Zyklus zählt von diesem Datum an – bei 14 Tagen also alle zwei Wochen ab hier, unabhängig vom Wochentag.</p>
+      </div>
+      <p class="hint">
+        Die Menge wird nur für die Bestandsrechnung gebraucht (z. B. "1" bei
+        "1 Tablette"). Leer lassen, wenn du keinen Bestand führst.
+      </p>
+
+      <button type="submit" class="auto secondary">Zum Plan hinzufügen</button>
+    </form>
+  <?php endif; ?>
+
   <div class="actions">
     <form method="post" data-confirm="Präparat samt Plan, Dateien und Timeline-Einträgen löschen?">
       <?= Csrf::field() ?>
@@ -538,4 +516,48 @@ View::start($app, ['title' => $m['name'] . ' – Medikation', 'active' => 'medic
     </form>
   </div>
 </div>
+
+<div class="panel">
+  <h2>Dateien</h2>
+  <?php if ($m['attachments']): ?>
+    <div class="table-wrap">
+      <table class="stack">
+        <thead><tr><th>Datei</th><th>Größe</th><th></th></tr></thead>
+        <tbody>
+        <?php foreach ($m['attachments'] as $f): ?>
+          <tr>
+            <td data-label="Datei">
+              <a href="<?= App::url('/file.php?id=' . (int)$f['id']) ?>" target="_blank" rel="noopener">
+                <?= App::e($f['filename']) ?></a>
+            </td>
+            <td data-label="Größe"><?= App::e(AttachmentService::formatSize((int)$f['size_bytes'])) ?></td>
+            <td>
+              <form method="post" data-confirm="Diese Datei löschen?" style="margin:0">
+                <?= Csrf::field() ?>
+                <input type="hidden" name="action" value="delete_file">
+                <input type="hidden" name="id" value="<?= $id ?>">
+                <input type="hidden" name="att" value="<?= (int)$f['id'] ?>">
+                <button type="submit" class="secondary small">Löschen</button>
+              </form>
+            </td>
+          </tr>
+        <?php endforeach; ?>
+        </tbody>
+      </table>
+    </div>
+  <?php else: ?>
+    <p class="sub">Noch keine Datei angehängt (z. B. Beipackzettel).</p>
+  <?php endif; ?>
+
+  <form method="post" enctype="multipart/form-data">
+    <?= Csrf::field() ?>
+    <input type="hidden" name="action" value="upload">
+    <input type="hidden" name="id" value="<?= $id ?>">
+    <label for="file">Datei hinzufügen</label>
+    <input type="file" id="file" name="file" required
+           accept=".pdf,.jpg,.jpeg,.png,.heic,.tif,.tiff,.txt,.csv">
+    <button type="submit" class="auto secondary">Hochladen</button>
+  </form>
+</div>
+
 <?php View::end($app); ?>

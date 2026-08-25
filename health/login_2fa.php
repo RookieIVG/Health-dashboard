@@ -28,6 +28,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $_SESSION['flash'] = "Nur noch {$result['remaining']} Wiederherstellungscodes übrig. "
                                . 'Bitte in den Einstellungen neue erzeugen.';
         }
+        if (!empty($_POST['trust_device'])) {
+            $auth->trustThisDevice((int)$_SESSION['auth_user_id']);
+        }
         header('Location: ' . App::url('/index.php'));
         exit;
     }
@@ -54,6 +57,13 @@ View::startBare($app, 'Bestätigung – ' . $app->config['app']['name']);
            inputmode="<?= $useRecovery ? 'text' : 'numeric' ?>"
            autocomplete="<?= $useRecovery ? 'off' : 'one-time-code' ?>"
            maxlength="<?= $useRecovery ? 11 : 6 ?>" spellcheck="false">
+
+    <label style="display:flex;align-items:center;gap:8px;font-weight:400;margin-top:12px">
+      <input type="checkbox" name="trust_device" value="1" style="width:auto">
+      Dieses Gerät <?= (int)($app->config['security']['trusted_device_days'] ?? 30) ?> Tage lang angemeldet lassen
+    </label>
+    <p class="hint">Nur auf einem Gerät aktivieren, das ausschließlich du benutzt.</p>
+
     <button type="submit">Bestätigen</button>
   </form>
 

@@ -5,6 +5,7 @@ require __DIR__ . '/_init.php';
 use Health\App;
 use Health\Csrf;
 use Health\LabRepository;
+use Health\Modules;
 use Health\View;
 
 $app = App::boot();
@@ -21,15 +22,15 @@ View::start($app, ['title' => 'Labor – ' . $app->config['app']['name'], 'activ
 <?php View::flash($ok, 'ok'); View::flash($error, 'error'); ?>
 
 <div class="panel">
-  <h1>Labor</h1>
+  <h1><?= View::moduleDot(Modules::LAB) ?>Labor</h1>
   <p class="sub">
-    <?= count($visits) ?> Befundtermine
+    <?= count($visits) ?> Laborbefunde
     · <a href="<?= App::url('/lab_cumulative.php') ?>">Kumulativbefund</a>
-    · <a href="<?= App::url('/lab_visit.php') ?>">Neuer Befundtermin</a>
+    · <a href="<?= App::url('/lab_visit.php') ?>">Neuer Laborbefund</a>
   </p>
 
   <?php if (!$visits): ?>
-    <p class="empty">Noch kein Befundtermin erfasst.</p>
+    <p class="empty">Noch kein Laborbefund erfasst.</p>
   <?php else: ?>
     <?php foreach ($visits as $v): ?>
       <div class="ev">
@@ -47,8 +48,8 @@ View::start($app, ['title' => 'Labor – ' . $app->config['app']['name'], 'activ
 </div>
 
 <div class="panel">
-  <h2>Tests verwalten</h2>
-  <p class="sub">Bezeichnungen, Referenzbereiche bearbeiten, eigene Tests anlegen, ausblenden.</p>
-  <a class="btn secondary auto" href="<?= App::url('/lab_tests.php') ?>">Tests verwalten</a>
+  <h2>Laborparameter verwalten</h2>
+  <p class="sub">Bezeichnungen, Referenzbereiche bearbeiten, eigene Laborparameter anlegen, ausblenden.</p>
+  <a class="btn secondary auto" href="<?= App::url('/lab_tests.php') ?>">Laborparameter verwalten</a>
 </div>
 <?php View::end($app); ?>
